@@ -367,11 +367,11 @@ function debounce(func, wait) {
 function showFieldError(fieldId, message) {
     const field = document.getElementById(fieldId);
     const errorElement = field.parentNode.querySelector('.error-message');
-    
+
     if (errorElement) {
         errorElement.remove();
     }
-    
+
     field.classList.add('input-error');
     const error = document.createElement('div');
     error.className = 'error-message';
@@ -395,17 +395,18 @@ function setupEventListeners() {
     document.getElementById('backButton').addEventListener('click', () => appState.setScreen('main'));
     document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
     document.getElementById('photoInput').addEventListener('change', handlePhotoSelect);
-    
+
     // Debounced input handlers for better performance
     document.getElementById('quantity').addEventListener('input', debounce(updateTotalAmount, 300));
     document.getElementById('pricePerUnit').addEventListener('input', debounce(updateTotalAmount, 300));
     document.getElementById('location').addEventListener('change', handleLocationChange);
-    
+
     // Input validation
     document.getElementById('productName').addEventListener('blur', validateProductName);
     document.getElementById('quantity').addEventListener('blur', validateQuantity);
     document.getElementById('pricePerUnit').addEventListener('blur', validatePrice);
     document.getElementById('location').addEventListener('blur', validateLocation);
+    document.getElementById('customLocation').addEventListener('blur', validateLocation);
 }
 
 function validateProductName() {
@@ -439,11 +440,29 @@ function validatePrice() {
 }
 
 function validateLocation() {
-    const value = document.getElementById('location').value;
+    const locationField = document.getElementById('location');
+    const customLocationField = document.getElementById('customLocation');
+    const value = locationField.value;
+
+    if (value === 'Інше') {
+        clearFieldError('location');
+
+        if (!InputValidator.validateLocation(customLocationField.value)) {
+            showFieldError('customLocation', 'Локація повинна містити від 2 до 100 символів');
+            return false;
+        }
+
+        clearFieldError('customLocation');
+        return true;
+    }
+
+    clearFieldError('customLocation');
+
     if (!InputValidator.validateLocation(value)) {
         showFieldError('location', 'Локація повинна містити від 2 до 100 символів');
         return false;
     }
+
     clearFieldError('location');
     return true;
 }
@@ -471,10 +490,17 @@ function startDelivery() {
 function setupPurchaseForm() {
     document.getElementById('purchaseForm').reset();
     removePhoto();
-    
+
     // Clear all field errors
-    ['productName', 'quantity', 'pricePerUnit', 'location'].forEach(clearFieldError);
-    
+    ['productName', 'quantity', 'pricePerUnit', 'location', 'customLocation'].forEach(clearFieldError);
+
+    const customLocationInput = document.getElementById('customLocation');
+    const customLocationGroup = document.getElementById('customLocationGroup');
+    customLocationInput.value = '';
+    customLocationInput.disabled = true;
+    customLocationInput.required = false;
+    customLocationGroup.style.display = 'none';
+
     const priceGroup = document.getElementById('priceGroup');
     const totalGroup = document.getElementById('totalGroup');
     const locationLabel = document.getElementById('locationLabel');
@@ -536,8 +562,23 @@ function populateUnitSelect() {
 }
 
 function handleLocationChange() {
+    const select = document.getElementById('location');
     const group = document.getElementById('customLocationGroup');
-    group.style.display = document.getElementById('location').value === 'Інше' ? 'block' : 'none';
+    const customInput = document.getElementById('customLocation');
+    const isCustomLocation = select.value === 'Інше';
+
+    group.style.display = isCustomLocation ? 'block' : 'none';
+    customInput.disabled = !isCustomLocation;
+    customInput.required = isCustomLocation;
+
+    if (select.value) {
+        clearFieldError('location');
+    }
+
+    if (!isCustomLocation) {
+        customInput.value = '';
+        clearFieldError('customLocation');
+    }
 }
 
 function updateTotalAmount() {
