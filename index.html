@@ -6,7 +6,7 @@
     <title>Облік закупівель</title>
     
     <!-- Security: Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://n8n.dmytrotovstytskyi.online https://generativelanguage.googleapis.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://n8n.dmytrotovstytskyi.online https://generativelanguage.googleapis.com;">
     
     <!-- Performance: Preconnect to external domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://unpkg.com">
     
     <!-- Performance: Optimized font loading -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
     
     <!-- Performance: External CSS -->
@@ -37,7 +37,7 @@
 <body>
     <header class="app-header">
         <div class="header-content">
-            <button class="back-button" id="backButton" style="display: none;">
+            <button class="back-button hidden" id="backButton">
                 <i data-lucide="arrow-left"></i>
             </button>
             <h1 class="header-title" id="headerTitle">Облік закупівель</h1>
@@ -53,7 +53,7 @@
             <p>Завантаження...</p>
         </div>
 
-        <div class="screen" id="mainScreen" style="display: none;">
+        <div class="screen hidden" id="mainScreen">
             <div class="tab-content" id="purchasesTab">
                 <div class="purchases-page">
                     <div class="page-header fade-in">
@@ -62,24 +62,24 @@
                     </div>
 
                     <div class="categories-grid">
-                        <div class="category-row fade-in" style="animation-delay: 100ms;">
-                            <button class="category-card start-purchase" onclick="startPurchase()">
+                        <div class="category-row fade-in delay-100">
+                            <button class="category-card start-purchase" data-action="start-purchase">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="category-icon lucide lucide-shopping-cart"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/><line x1="12" x2="12" y1="5" y2="12"/><line x1="15" x2="9" y1="8.5" y2="8.5"/></svg>
                                 <span class="category-label">Почати закупку</span>
                             </button>
                         </div>
-                        <div class="category-row fade-in" style="animation-delay: 200ms;">
-                            <button class="category-card glassmorphism unloading" onclick="startUnloading()">
+                        <div class="category-row fade-in delay-200">
+                            <button class="category-card glassmorphism unloading" data-action="start-unloading">
                                 <i data-lucide="truck" class="category-icon"></i>
                                 <span class="category-label">Розвантаження</span>
                             </button>
-                            <button class="category-card glassmorphism delivery" onclick="startDelivery()">
+                            <button class="category-card glassmorphism delivery" data-action="start-delivery">
                                 <i data-lucide="package" class="category-icon"></i>
                                 <span class="category-label">Доставка</span>
                             </button>
                         </div>
-                        <div class="end-day-section fade-in" style="animation-delay: 300ms;">
-                            <button class="end-day-button" onclick="endWorkDay()">
+                        <div class="end-day-section fade-in delay-300">
+                            <button class="end-day-button" data-action="end-day">
                                 <i data-lucide="sunset"></i>
                                 <span>Завершити день</span>
                             </button>
@@ -88,7 +88,7 @@
                 </div>
             </div>
 
-            <div class="tab-content" id="historyTab" style="display: none;">
+            <div class="tab-content hidden" id="historyTab">
                 <div class="cart-page">
                     <div class="page-header">
                         <h2>Історія за сесію</h2>
@@ -103,7 +103,7 @@
             </div>
         </div>
 
-        <div class="screen" id="purchaseFormScreen" style="display: none;">
+        <div class="screen hidden" id="purchaseFormScreen">
             <div class="purchase-form-page">
                  <div class="page-header">
                     <h2 id="formTitle">Нова закупівля</h2>
@@ -132,21 +132,21 @@
                             <label for="location" id="locationLabel">Локація</label>
                             <select id="location" required></select>
                         </div>
-                        <div class="form-group" id="customLocationGroup" style="display: none;">
+                        <div class="form-group hidden" id="customLocationGroup">
                             <label for="customLocation">Вкажіть локацію</label>
                             <input type="text" id="customLocation" placeholder="Введіть назву локації">
                         </div>
                         <div class="form-group">
                             <label>Фото товару</label>
                             <div class="photo-uploader">
-                                <input type="file" id="photoInput" accept="image/*" style="display: none;">
-                                <button type="button" class="photo-button" onclick="document.getElementById('photoInput').click()">
+                                <input type="file" id="photoInput" accept="image/*" class="file-input-hidden">
+                                <button type="button" class="photo-button" data-action="trigger-photo">
                                     <i data-lucide="camera"></i>
                                     <span>Додати фото</span>
                                 </button>
-                                <div class="photo-preview" id="photoPreview" style="display: none;">
+                                <div class="photo-preview hidden" id="photoPreview">
                                     <img id="previewImage" alt="Попередній перегляд">
-                                    <button type="button" class="remove-photo" onclick="removePhoto()">
+                                    <button type="button" class="remove-photo" data-action="remove-photo">
                                         <i data-lucide="x"></i>
                                     </button>
                                 </div>
@@ -165,12 +165,12 @@
         </div>
     </main>
 
-    <nav class="bottom-navigation" id="bottomNavigation">
-        <button class="nav-button active" data-tab="purchases" onclick="switchTab('purchases')">
+    <nav class="bottom-navigation hidden" id="bottomNavigation">
+        <button class="nav-button active" data-tab="purchases">
             <i data-lucide="shopping-cart"></i>
             <span>Закупівлі</span>
         </button>
-        <button class="nav-button" data-tab="history" onclick="switchTab('history')">
+        <button class="nav-button" data-tab="history">
             <i data-lucide="history"></i>
             <span>Історія</span>
         </button>
@@ -178,16 +178,16 @@
 
     <div class="toast-container" id="toastContainer"></div>
     
-    <div class="modal" id="aiSummaryModal" style="display: none;">
+    <div class="modal hidden" id="aiSummaryModal">
         <div class="modal-content glassmorphism">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold">✨ AI-звіт дня</h2>
-                <button class="back-button" onclick="closeAiSummaryModal()"><i data-lucide="x"></i></button>
+                <button class="back-button" data-action="close-ai-summary"><i data-lucide="x"></i></button>
             </div>
             <div id="aiSummaryOutput"><div class="spinner"></div><p class="mt-2 text-center">Генерую звіт...</p></div>
             <div class="flex gap-4 mt-4">
-                 <button class="save-button" style="background-color: var(--muted); color: var(--foreground);" onclick="closeAiSummaryModal()">Закрити</button>
-                 <button class="end-day-button" id="confirmEndDayBtn">Підтвердити та очистити</button>
+                 <button class="save-button secondary-button" data-action="close-ai-summary">Закрити</button>
+                 <button class="end-day-button" id="confirmEndDayBtn" data-action="confirm-end-day">Підтвердити та очистити</button>
             </div>
         </div>
     </div>

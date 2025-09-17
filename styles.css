@@ -53,6 +53,14 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+.hidden {
+    display: none !important;
+}
+
+.file-input-hidden {
+    display: none;
+}
+
 .glassmorphism {
     background: rgba(255, 255, 255, 0.5);
     backdrop-filter: blur(12px);
@@ -372,6 +380,15 @@ body {
     cursor: not-allowed;
 }
 
+.save-button.secondary-button {
+    background: var(--muted);
+    color: var(--foreground);
+}
+
+.save-button.secondary-button:hover {
+    background: var(--muted);
+}
+
 .cart-empty {
     text-align: center;
     padding: 3rem 1rem;
@@ -489,9 +506,18 @@ body {
     animation: toast-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
+.toast.fade-out {
+    animation: fadeOut 0.5s ease forwards;
+}
+
 @keyframes toast-in {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(20px); }
 }
 
 .modal-content {
@@ -512,6 +538,18 @@ body {
 
 .fade-in {
   animation: fadeInAnimation 0.5s ease-out forwards;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
 }
 
 @keyframes fadeInAnimation {

@@ -120,29 +120,29 @@ class AppState {
     updateUI() {
         // Use requestAnimationFrame for better performance
         requestAnimationFrame(() => {
-            document.getElementById('mainScreen').style.display = this.screen === 'main' ? 'block' : 'none';
-            document.getElementById('purchaseFormScreen').style.display = this.screen === 'purchase-form' ? 'block' : 'none';
-            document.getElementById('purchasesTab').style.display = this.tab === 'purchases' ? 'block' : 'none';
-            document.getElementById('historyTab').style.display = this.tab === 'history' ? 'block' : 'none';
-            
+            document.getElementById('mainScreen').classList.toggle('hidden', this.screen !== 'main');
+            document.getElementById('purchaseFormScreen').classList.toggle('hidden', this.screen !== 'purchase-form');
+            document.getElementById('purchasesTab').classList.toggle('hidden', this.tab !== 'purchases');
+            document.getElementById('historyTab').classList.toggle('hidden', this.tab !== 'history');
+
             document.querySelectorAll('.nav-button').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.tab === this.tab);
             });
-            
+
             this.updateHeader();
-            document.getElementById('bottomNavigation').style.display = this.screen === 'main' ? 'flex' : 'none';
+            document.getElementById('bottomNavigation').classList.toggle('hidden', this.screen !== 'main');
         });
     }
 
     updateHeader() {
         const backButton = document.getElementById('backButton');
         const headerTitle = document.getElementById('headerTitle');
-        
+
         if (this.screen === 'purchase-form') {
-            backButton.style.display = 'block';
+            backButton.classList.remove('hidden');
             headerTitle.textContent = this.isUnloading ? 'Розвантаження' : this.isDelivery ? 'Доставка' : 'Нова закупівля';
         } else {
-            backButton.style.display = 'none';
+            backButton.classList.add('hidden');
             headerTitle.textContent = 'Облік закупівель';
         }
     }
@@ -219,7 +219,7 @@ class ToastManager {
         
         // Auto remove after 3 seconds
         setTimeout(() => {
-            toast.style.animation = 'fadeOut 0.5s ease forwards';
+            toast.classList.add('fade-out');
             setTimeout(() => {
                 if (toast.parentNode) {
                     toast.remove();
@@ -395,7 +395,52 @@ function setupEventListeners() {
     document.getElementById('backButton').addEventListener('click', () => appState.setScreen('main'));
     document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
     document.getElementById('photoInput').addEventListener('change', handlePhotoSelect);
-    
+
+    const startPurchaseButton = document.querySelector('[data-action="start-purchase"]');
+    if (startPurchaseButton) {
+        startPurchaseButton.addEventListener('click', startPurchase);
+    }
+
+    const startUnloadingButton = document.querySelector('[data-action="start-unloading"]');
+    if (startUnloadingButton) {
+        startUnloadingButton.addEventListener('click', startUnloading);
+    }
+
+    const startDeliveryButton = document.querySelector('[data-action="start-delivery"]');
+    if (startDeliveryButton) {
+        startDeliveryButton.addEventListener('click', startDelivery);
+    }
+
+    const endDayButton = document.querySelector('[data-action="end-day"]');
+    if (endDayButton) {
+        endDayButton.addEventListener('click', endWorkDay);
+    }
+
+    document.querySelectorAll('.nav-button').forEach(button => {
+        button.addEventListener('click', () => switchTab(button.dataset.tab));
+    });
+
+    const photoTriggerButton = document.querySelector('[data-action="trigger-photo"]');
+    if (photoTriggerButton) {
+        photoTriggerButton.addEventListener('click', () => {
+            document.getElementById('photoInput').click();
+        });
+    }
+
+    const removePhotoButton = document.querySelector('[data-action="remove-photo"]');
+    if (removePhotoButton) {
+        removePhotoButton.addEventListener('click', removePhoto);
+    }
+
+    document.querySelectorAll('[data-action="close-ai-summary"]').forEach(button => {
+        button.addEventListener('click', closeAiSummaryModal);
+    });
+
+    const confirmEndDayButton = document.querySelector('[data-action="confirm-end-day"]');
+    if (confirmEndDayButton) {
+        confirmEndDayButton.addEventListener('click', handleConfirmEndDay);
+    }
+
     // Debounced input handlers for better performance
     document.getElementById('quantity').addEventListener('input', debounce(updateTotalAmount, 300));
     document.getElementById('pricePerUnit').addEventListener('input', debounce(updateTotalAmount, 300));
@@ -471,7 +516,8 @@ function startDelivery() {
 function setupPurchaseForm() {
     document.getElementById('purchaseForm').reset();
     removePhoto();
-    
+    document.getElementById('customLocationGroup').classList.add('hidden');
+
     // Clear all field errors
     ['productName', 'quantity', 'pricePerUnit', 'location'].forEach(clearFieldError);
     
@@ -479,28 +525,26 @@ function setupPurchaseForm() {
     const totalGroup = document.getElementById('totalGroup');
     const locationLabel = document.getElementById('locationLabel');
     const saveButtonText = document.getElementById('saveButtonText');
-    
+
+    const shouldHideTotals = appState.isUnloading || appState.isDelivery;
+    priceGroup.classList.toggle('hidden', shouldHideTotals);
+    totalGroup.classList.toggle('hidden', shouldHideTotals);
+
     let locations = config.marketLocations;
-    
+
     if (appState.isUnloading) {
-        priceGroup.style.display = 'none'; 
-        totalGroup.style.display = 'none';
-        locationLabel.textContent = 'Магазин (розвантаження)'; 
+        locationLabel.textContent = 'Магазин (розвантаження)';
         saveButtonText.textContent = 'Відправити розвантаження';
         locations = config.unloadingLocations;
     } else if (appState.isDelivery) {
-        priceGroup.style.display = 'none'; 
-        totalGroup.style.display = 'none';
-        locationLabel.textContent = 'Магазин (доставка)'; 
+        locationLabel.textContent = 'Магазин (доставка)';
         saveButtonText.textContent = 'Відправити доставку';
         locations = config.deliveryLocations;
     } else {
-        priceGroup.style.display = 'block'; 
-        totalGroup.style.display = 'block';
-        locationLabel.textContent = 'Локація закупки'; 
+        locationLabel.textContent = 'Локація закупки';
         saveButtonText.textContent = 'Відправити в облік';
     }
-    
+
     setupLocationOptions(locations);
     updateTotalAmount();
 }
@@ -537,7 +581,8 @@ function populateUnitSelect() {
 
 function handleLocationChange() {
     const group = document.getElementById('customLocationGroup');
-    group.style.display = document.getElementById('location').value === 'Інше' ? 'block' : 'none';
+    const isCustom = document.getElementById('location').value === 'Інше';
+    group.classList.toggle('hidden', !isCustom);
 }
 
 function updateTotalAmount() {
@@ -564,13 +609,13 @@ function handlePhotoSelect(event) {
     const reader = new FileReader();
     reader.onload = (e) => {
         document.getElementById('previewImage').src = e.target.result;
-        document.getElementById('photoPreview').style.display = 'block';
+        document.getElementById('photoPreview').classList.remove('hidden');
     };
     reader.readAsDataURL(selectedFile);
 }
 
 function removePhoto() {
-    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('photoPreview').classList.add('hidden');
     document.getElementById('photoInput').value = '';
     selectedFile = null;
 }
@@ -644,8 +689,8 @@ function updateHistoryDisplay() {
     itemsContainer.innerHTML = '';
     
     if (items.length > 0) {
-        document.getElementById('historyEmpty').style.display = 'none';
-        
+        document.getElementById('historyEmpty').classList.add('hidden');
+
         items.forEach(item => {
             const itemEl = document.createElement('div');
             itemEl.className = 'cart-item glassmorphism';
@@ -679,7 +724,7 @@ function updateHistoryDisplay() {
         
         document.getElementById('historySummary').textContent = `${items.length} запис(ів) за сесію`;
     } else {
-        document.getElementById('historyEmpty').style.display = 'block';
+        document.getElementById('historyEmpty').classList.remove('hidden');
         document.getElementById('historySummary').textContent = 'Ще немає записів';
     }
 }
@@ -690,9 +735,9 @@ async function endWorkDay() {
         toastManager.show('Немає записів за сьогодні для завершення дня.', 'warning');
         return;
     }
-    
+
     const modal = document.getElementById('aiSummaryModal');
-    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
     const output = document.getElementById('aiSummaryOutput');
     output.innerHTML = '<div class="spinner"></div><p class="mt-2 text-center">Генерую звіт...</p>';
     
@@ -702,21 +747,26 @@ async function endWorkDay() {
     } catch (error) {
         output.textContent = error.message;
     }
-    
+
     if (window.lucide) {
         lucide.createIcons();
     }
-    
-    document.getElementById('confirmEndDayBtn').onclick = () => {
-        SecureStorageManager.clearHistory();
-        updateHistoryDisplay();
-        closeAiSummaryModal();
-        toastManager.show('Робочий день завершено. Історія очищена.', 'success');
-    };
 }
 
 function closeAiSummaryModal() {
-    document.getElementById('aiSummaryModal').style.display = 'none';
+    document.getElementById('aiSummaryModal').classList.add('hidden');
+}
+
+function handleConfirmEndDay() {
+    const modal = document.getElementById('aiSummaryModal');
+    if (modal.classList.contains('hidden')) {
+        return;
+    }
+
+    SecureStorageManager.clearHistory();
+    updateHistoryDisplay();
+    closeAiSummaryModal();
+    toastManager.show('Робочий день завершено. Історія очищена.', 'success');
 }
 
 // Initialize app
@@ -742,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Show app after loading
     setTimeout(() => {
-        document.getElementById('loadingScreen').style.display = 'none';
+        document.getElementById('loadingScreen').classList.add('hidden');
         appState.updateUI();
         updateHistoryDisplay();
     }, 500);
@@ -753,11 +803,3 @@ document.addEventListener('DOMContentLoaded', () => {
     populateUnitSelect();
 });
 
-// Export functions for global access
-window.switchTab = switchTab;
-window.startPurchase = startPurchase;
-window.startUnloading = startUnloading;
-window.startDelivery = startDelivery;
-window.endWorkDay = endWorkDay;
-window.removePhoto = removePhoto;
-window.closeAiSummaryModal = closeAiSummaryModal;
