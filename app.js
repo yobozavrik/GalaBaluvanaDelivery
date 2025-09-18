@@ -57,8 +57,23 @@ class SecureConfig {
     }
 
     getSecureWebhookUrl() {
-        // In production, this should come from environment variables
-        return 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
+        // Allow overriding the webhook URL from a deploy-time configuration value
+        const overrideUrl = (typeof window !== 'undefined' && window.__SECURE_WEBHOOK_URL__)
+            || (typeof globalThis !== 'undefined' && globalThis.SECURE_WEBHOOK_URL)
+            || '';
+
+        if (overrideUrl && typeof overrideUrl === 'string') {
+            try {
+                const parsedUrl = new URL(overrideUrl);
+                if (parsedUrl.protocol === 'https:') {
+                    return overrideUrl;
+                }
+            } catch (error) {
+                console.warn('Invalid secure webhook override detected, falling back to default URL.', error);
+            }
+        }
+
+        return 'https://n8n.dmytrotovstytskyi.online/webhook/purchase';
     }
 
     getSecureApiKey() {
