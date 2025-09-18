@@ -58,7 +58,7 @@ class SecureConfig {
 
     getSecureWebhookUrl() {
         // In production, this should come from environment variables
-        return 'https://n8n.dmytrotovstytskyi.online/webhook/zakupka';
+        return 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
     }
 
     getSecureApiKey() {
