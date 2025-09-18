@@ -268,14 +268,24 @@ class SecureApiClient {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-            const response = await fetch(this.config.N8N_WEBHOOK_URL, {
+            const requestOptions = {
                 method: 'POST',
                 body: formData,
-                signal: controller.signal,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest' // CSRF protection
+                signal: controller.signal
+            };
+
+            try {
+                const webhookUrl = new URL(this.config.N8N_WEBHOOK_URL, window.location.origin);
+                if (webhookUrl.origin === window.location.origin) {
+                    requestOptions.headers = {
+                        'X-Requested-With': 'XMLHttpRequest' // CSRF protection for same-origin requests
+                    };
                 }
-            });
+            } catch (urlError) {
+                console.warn('Invalid webhook URL, skipping same-origin header check', urlError);
+            }
+
+            const response = await fetch(this.config.N8N_WEBHOOK_URL, requestOptions);
 
             clearTimeout(timeoutId);
 
