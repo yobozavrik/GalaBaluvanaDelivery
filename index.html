@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Облік закупівель</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS Variables for theming */
+        :root {
+            --primary: #4f46e5;
+            --primary-foreground: #ffffff;
+            --background: #f9fafb;
+            --foreground: #111827;
+            --card: #ffffff;
+            --card-foreground: #111827;
+            --muted: #f3f4f6;
+            --muted-foreground: #6b7280;
+            --destructive: #ef4444;
+            --destructive-foreground: #ffffff;
+            --border: #e5e7eb;
+            --input: #e5e7eb;
+            --ring: #4f46e5;
+            --radius: 0.75rem;
+            --shadow-soft: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+            --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            --shadow-button: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="dark"] {
+            --primary: #6366f1;
+            --primary-foreground: #ffffff;
+            --background: #111827;
+            --foreground: #f9fafb;
+            --card: #1f2937;
+            --card-foreground: #f9fafb;
+            --muted: #374151;
+            --muted-foreground: #9ca3af;
+            --destructive: #f87171;
+            --destructive-foreground: #ffffff;
+            --border: #374151;
+            --input: #374151;
+            --ring: #6366f1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 18px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background-color: var(--card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+            height: 3.5rem;
+            padding: 0 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .back-button, .theme-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            background: none;
+            border: none;
+            border-radius: 50%;
+            color: var(--foreground);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .back-button:hover, .theme-toggle:hover {
+            background-color: var(--muted);
+        }
+
+        .header-title {
+            flex: 1;
+            text-align: center;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .main-content {
+            padding-bottom: 5rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - 3.5rem);
+            gap: 1rem;
+        }
+
+        .loading-spinner {
+            width: 2rem;
+            height: 2rem;
+            border: 2px solid var(--border);
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .page-header {
+            text-align: center;
+            padding: 1.5rem 1rem;
+        }
+        .page-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .page-header p {
+            color: var(--muted-foreground);
+        }
+
+        .categories-grid {
+            padding: 0 1rem;
+        }
+
+        .category-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .category-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--card);
+            color: var(--card-foreground);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+            text-align: center;
+            box-shadow: var(--shadow-card);
+        }
+        .category-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-button);
+        }
+
+        .category-card:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .category-card:disabled:hover {
+            transform: none;
+            box-shadow: var(--shadow-card);
+        }
+
+        .category-card.start-purchase {
+            grid-column: span 2;
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border-color: var(--primary);
+        }
+
+        .category-icon {
+            width: 3rem;
+            height: 3rem;
+            margin-bottom: 0.75rem;
+            color: var(--primary);
+        }
+
+        .start-purchase .category-icon {
+            color: var(--primary-foreground);
+        }
+        
+        .category-label {
+            font-weight: 500;
+        }
+
+        .end-day-section {
+            padding-top: 1rem;
+        }
+
+        .end-day-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--destructive);
+            color: var(--destructive-foreground);
+            border: none;
+            border-radius: var(--radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+            box-shadow: var(--shadow-card);
+        }
+        .end-day-button:hover {
+            background: var(--destructive);
+            opacity: 0.9;
+            box-shadow: var(--shadow-button);
+        }
+        
+        /* Form */
+        .purchase-form-page {
+            padding: 1rem;
+        }
+        .form-container {
+            background: var(--card);
+            padding: 1.5rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-card);
+        }
+        .purchase-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-group label {
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--background);
+            color: var(--foreground);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--ring);
+            box-shadow: 0 0 0 2px var(--ring);
+        }
+        
+        .form-group input.input-error, .form-group select.input-error {
+            border-color: var(--destructive);
+        }
+        .form-group input.input-error:focus, .form-group select.input-error:focus {
+             box-shadow: 0 0 0 2px var(--destructive);
+        }
+
+        .photo-uploader { display: flex; align-items: center; gap: 1rem; }
+        .photo-button {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+        .photo-preview { position: relative; }
+        .photo-preview img {
+            width: 4rem; height: 4rem;
+            object-fit: cover;
+            border-radius: 0.5rem;
+        }
+        .remove-photo {
+            position: absolute;
+            top: -0.5rem; right: -0.5rem;
+            width: 1.5rem; height: 1.5rem;
+            background: var(--destructive);
+            color: var(--destructive-foreground);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .total-display {
+            padding: 1rem;
+            background: var(--muted);
+            border-radius: var(--radius);
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .save-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border: none;
+            border-radius: var(--radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+            box-shadow: var(--shadow-card);
+        }
+        .save-button:hover {
+            opacity: 0.9;
+            box-shadow: var(--shadow-button);
+        }
+        .save-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .save-button .button-spinner {
+            width: 1.25rem;
+            height: 1.25rem;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+
+        /* Cart / History */
+        .history-page {
+             padding: 1rem;
+        }
+        .history-controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .search-input {
+            flex-grow: 1;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            background: var(--card);
+        }
+        .cart-empty {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--muted-foreground);
+        }
+        .cart-empty .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .cart-items { display: flex; flex-direction: column; gap: 1rem; }
+        .cart-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            box-shadow: var(--shadow-soft);
+        }
+        .cart-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+        .cart-item-name { font-weight: 600; }
+        .cart-item-category { font-size: 0.875rem; color: var(--muted-foreground); }
+        
+        .cart-item-actions button {
+            background: none; border: none; cursor: pointer; color: var(--muted-foreground); padding: 0.25rem;
+        }
+        .cart-item-actions button:hover { color: var(--primary); }
+        .cart-item-actions button.delete:hover { color: var(--destructive); }
+
+        .cart-item-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border);
+            padding-top: 0.75rem;
+            margin-top: 0.75rem;
+        }
+        .cart-item-detail-label { color: var(--muted-foreground); }
+        .cart-item-total { font-weight: 700; }
+        
+        /* Reports Page */
+        .reports-page { padding: 1rem; }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center; }
+        .stat-card-value { font-size: 1.75rem; font-weight: 700; color: var(--primary); }
+        .stat-card-label { font-size: 0.875rem; color: var(--muted-foreground); }
+        .chart-container { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+
+        
+        /* Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.3s; }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content { background: var(--card); padding: 2rem; border-radius: var(--radius); max-width: 320px; width: 90%; text-align: center; transform: scale(0.9); transition: all 0.3s; }
+        .modal-overlay.visible .modal-content { transform: scale(1); }
+        .modal-content h3 { margin-bottom: 0.5rem; }
+        .modal-content p { margin-bottom: 1.5rem; color: var(--muted-foreground); }
+        .modal-actions { display: flex; gap: 1rem; }
+        .modal-actions button { flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: none; font-weight: 600; cursor: pointer; }
+        .modal-actions .btn-secondary { background: var(--muted); color: var(--muted-foreground); }
+        .modal-actions .btn-destructive { background: var(--destructive); color: var(--destructive-foreground); }
+
+        .bottom-navigation {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            display: flex;
+            height: 4rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .nav-button {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--muted-foreground);
+        }
+        .nav-button.active {
+            color: var(--primary);
+        }
+        .nav-button span {
+            font-size: 0.75rem;
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .toast {
+            padding: 0.75rem 1.25rem;
+            background: #2c3e50;
+            color: white;
+            border-radius: 9999px;
+            box-shadow: var(--shadow-button);
+            animation: toast-in 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+        @keyframes toast-in {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+    <script>
+        // Local dev helper: on localhost use direct n8n webhook instead of /api/delivery proxy
+        (function(){
+            try {
+                var isLocal = typeof window !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+                if (isLocal && !window.__SECURE_WEBHOOK_URL__) {
+                    window.__SECURE_WEBHOOK_URL__ = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+                }
+            } catch (e) {}
+        })();
+    </script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-content">
+            <button class="back-button" id="backButton" style="display: none;">
+                <i data-lucide="arrow-left"></i>
+            </button>
+            <h1 class="header-title" id="headerTitle">Облік закупівель</h1>
+            <button class="theme-toggle" id="themeToggle">
+                <i data-lucide="moon" class="theme-icon"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="loading-screen" id="loadingScreen">
+            <div class="loading-spinner"></div>
+            <p>Завантаження...</p>
+        </div>
+
+        <div class="screen" id="mainScreen" style="display: none;">
+            <div class="tab-content" id="homeTab">
+                <div class="purchases-page">
+                    <div class="page-header">
+                        <h2>Оберіть дію</h2>
+                        <p>Виберіть тип операції для обліку</p>
+                    </div>
+
+                    <div class="categories-grid">
+                        <div class="category-row">
+                            <button class="category-card start-purchase" onclick="startPurchase()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="category-icon lucide lucide-shopping-cart"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/><line x1="12" x2="12" y1="5" y2="12"/><line x1="15" x2="9" y1="8.5" y2="8.5"/></svg>
+                                <span class="category-label">Почати закупку</span>
+                            </button>
+                        </div>
+                        <div class="category-row">
+                            <button class="category-card unloading" onclick="startUnloading()">
+                                <i data-lucide="truck" class="category-icon"></i>
+                                <span class="category-label">Відвантаження</span>
+                            </button>
+                            <button class="category-card delivery" disabled>
+                                <i data-lucide="package" class="category-icon"></i>
+                                <span class="category-label">Доставка (тестування)</span>
+                            </button>
+                        </div>
+                        <div class="end-day-section">
+                            <button class="end-day-button" onclick="showEndDayModal()">
+                                <i data-lucide="sunset"></i>
+                                <span>Завершити день</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="purchasesListTab" style="display: none;">
+                <div class="page-header">
+                    <h2>Історія Закупок</h2>
+                    <p id="purchasesListSummary">Ще немає записів</p>
+                </div>
+                <div class="history-page">
+                     <div class="history-controls">
+                        
+                        <button id="sendPurchasesButton" class="save-button" style="min-width: 150px; flex-grow: 1;">
+                            <i data-lucide="upload-cloud" class="button-icon"></i>
+                            <span class="button-spinner" style="display: none;"></span>
+                            <span>Відправити всі</span>
+                        </button>
+                    </div>
+                    <div class="cart-items" id="purchasesListItems"></div>
+                    <div class="cart-empty" id="purchasesListEmpty">
+                        <div class="empty-icon">🛒</div>
+                        <p>Тут буде історія ваших закупок</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="unloadingListTab" style="display: none;">
+                <div class="page-header">
+                    <h2>Історія Переміщень</h2>
+                    <p id="unloadingListSummary">Ще немає записів</p>
+                </div>
+                <div class="history-page">
+                     <div class="history-controls">
+                        
+                        <button id="sendUnloadingsButton" class="save-button" style="min-width: 150px; flex-grow: 1;">
+                            <i data-lucide="upload-cloud" class="button-icon"></i>
+                            <span class="button-spinner" style="display: none;"></span>
+                            <span>Відправити всі</span>
+                        </button>
+                    </div>
+                    <div class="cart-items" id="unloadingListItems"></div>
+                    <div class="cart-empty" id="unloadingListEmpty">
+                        <div class="empty-icon">🚚</div>
+                        <p>Тут буде історія відвантажень та доставок</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="reportsTab" style="display: none;">
+                 <div class="page-header">
+                    <h2>Звіти</h2>
+                    <p>Аналітика ваших операцій</p>
+                </div>
+                <div class="reports-page">
+                    <div class="stats-grid" id="statsGrid">
+                        <!-- Stats will be rendered here -->
+                    </div>
+                    <div class="chart-container">
+                        <h3>Витрати за типом</h3>
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="screen" id="purchaseFormScreen" style="display: none;">
+            <div class="purchase-form-page">
+                 <div class="page-header">
+                    <h2 id="formTitle">Нова закупівля</h2>
+                    <p id="formSubtitle">Вкажіть дані про товар</p>
+                </div>
+                <div class="form-container">
+                    <form class="purchase-form" id="purchaseForm" novalidate>
+                        <div class="form-group">
+                            <label for="productName">Назва товару</label>
+                            <input type="text" id="productName" list="productSuggestions" placeholder="Наприклад: Помідори червоні" required>
+                            <datalist id="productSuggestions"></datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="quantity">Кількість</label>
+                            <input type="number" id="quantity" step="0.1" min="0" placeholder="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="unit">Одиниця виміру</label>
+                            <select id="unit" required></select>
+                        </div>
+                        <div class="form-group" id="priceGroup">
+                            <label for="pricePerUnit">Ціна за одиницю, ₴</label>
+                            <input type="number" id="pricePerUnit" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="location" id="locationLabel">Локація</label>
+                            <select id="location" required></select>
+                        </div>
+                        <div class="form-group" id="customLocationGroup" style="display: none;">
+                            <label for="customLocation">Вкажіть локацію</label>
+                            <input type="text" id="customLocation" placeholder="Введіть назву локації">
+                        </div>
+                        <div class="form-group">
+                            <label>Фото товару</label>
+                            <div class="photo-uploader">
+                                <input type="file" id="photoInput" accept="image/*" style="display: none;">
+                                <button type="button" class="photo-button" onclick="document.getElementById('photoInput').click()">
+                                    <i data-lucide="camera"></i>
+                                    <span>Додати фото</span>
+                                </button>
+                                <div class="photo-preview" id="photoPreview" style="display: none;">
+                                    <img id="previewImage" alt="Попередній перегляд">
+                                    <button type="button" class="remove-photo" onclick="removePhoto()">
+                                        <i data-lucide="x"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="total-display" id="totalGroup">
+                            <span id="totalAmount">0.00 ₴</span>
+                        </div>
+                        <button type="submit" class="save-button" id="saveButton">
+                            <i data-lucide="save" class="button-icon"></i>
+                            <span class="button-spinner" style="display: none;"></span>
+                            <span id="saveButtonText">Зберегти локально</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <nav class="bottom-navigation" id="bottomNavigation">
+        <button class="nav-button active" data-tab="home" onclick="switchTab('home')">
+            <i data-lucide="home"></i>
+            <span>Головна</span>
+        </button>
+        <button class="nav-button" data-tab="purchasesList" onclick="switchTab('purchasesList')">
+            <i data-lucide="shopping-cart"></i>
+            <span>Закупка</span>
+        </button>
+        <button class="nav-button" data-tab="unloadingList" onclick="switchTab('unloadingList')">
+            <i data-lucide="truck"></i>
+            <span>Відвантаження</span>
+        </button>
+        <button class="nav-button" data-tab="reports" onclick="switchTab('reports')">
+            <i data-lucide="pie-chart"></i>
+            <span>Звіти</span>
+        </button>
+    </nav>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="modal-overlay" id="endDayModal">
+        <div class="modal-content">
+            <h3>Завершити день?</h3>
+            <p>Історію операцій за поточний день буде очищено. Ви впевнені?</p>
+            <div class="modal-actions">
+                <button class="btn-secondary" id="cancelEndDay">Скасувати</button>
+                <button class="btn-destructive" id="confirmEndDay">Завершити</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        class AppState {
+            constructor() {
+                this.screen = 'main';
+                this.tab = 'home';
+                this.isUnloading = false;
+                this.isDelivery = false;
+                this.editingItemId = null;
+            }
+            setScreen(screen, options = {}) {
+                this.screen = screen;
+                if (options.isUnloading !== undefined) this.isUnloading = options.isUnloading;
+                if (options.isDelivery !== undefined) this.isDelivery = options.isDelivery;
+                if (options.editingItemId !== undefined) this.editingItemId = options.editingItemId;
+                else if (screen === 'main') this.editingItemId = null; // Reset on going back
+                this.updateUI();
+            }
+            setTab(tab) {
+                this.tab = tab;
+                this.updateUI();
+            }
+            updateUI() {
+                document.getElementById('mainScreen').style.display = this.screen === 'main' ? 'block' : 'none';
+                document.getElementById('purchaseFormScreen').style.display = this.screen === 'purchase-form' ? 'block' : 'none';
+                
+                document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+                const activeTab = document.getElementById(`${this.tab}Tab`);
+                if(activeTab) activeTab.style.display = 'block';
+
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === this.tab);
+                });
+                this.updateHeader();
+                document.getElementById('bottomNavigation').style.display = this.screen === 'main' ? 'flex' : 'none';
+            }
+            updateHeader() {
+                const backButton = document.getElementById('backButton');
+                const headerTitle = document.getElementById('headerTitle');
+                if (this.screen === 'purchase-form') {
+                    backButton.style.display = 'flex';
+                    if (this.editingItemId) {
+                         headerTitle.textContent = 'Редагувати запис';
+                    } else {
+                        headerTitle.textContent = this.isUnloading || this.isDelivery ? 'Нове відвантаження' : 'Нова закупівля';
+                    }
+                } else {
+                    backButton.style.display = 'none';
+                    headerTitle.textContent = 'Облік закупівель';
+                }
+            }
+        }
+        const appState = new AppState();
+        
+        const getSecureWebhookUrl = () => {
+            const productionUrl = '/api/delivery';
+            const localUrl = 'http://localhost:3000/api/delivery';
+
+            let defaultUrl = productionUrl;
+
+            if (typeof window !== 'undefined') {
+                const hostname = window.location?.hostname ?? '';
+                const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+                if (isLocalhost) {
+                    defaultUrl = localUrl;
+                }
+            }
+            const overrideUrl = (typeof window !== 'undefined' && window.__SECURE_WEBHOOK_URL__)
+                || (typeof globalThis !== 'undefined' && globalThis.SECURE_WEBHOOK_URL)
+                || '';
+
+            if (overrideUrl && typeof overrideUrl === 'string') {
+                try {
+                    const parsed = new URL(overrideUrl);
+                    if (parsed.protocol === 'https:') {
+                        console.log('🔗 Используется переопределённый webhook URL:', overrideUrl);
+                        return overrideUrl;
+                    }
+                } catch (error) {
+                    console.warn('Некорректный override webhook URL, используется значение по умолчанию.', error);
+                }
+            }
+
+            console.log('🔗 Используется webhook URL по умолчанию:', defaultUrl);
+            return defaultUrl;
+        };
+
+        const appConfig = {
+            N8N_WEBHOOK_URL: getSecureWebhookUrl(),
+            units: [
+                { value: 'kg', label: 'кг' }, { value: 'piece', label: 'шт' },
+                { value: 'pack', label: 'упаковка' }, { value: 'box', label: 'ящик' },
+                { value: 'bunch', label: 'пучок' }, { value: 'other', label: 'інше' }
+            ],
+            marketLocations: ['Калинівський ринок', 'Зелений ринок', 'Метро'],
+            unloadingLocations: ['Героїв Майдану', 'Ентузіастів', 'Бульвар', 'Гравітон', 'Садова', 'Флоріда', 'Ентузіастів 2 поверх', 'Піцерія', 'Руська'],
+            products: ['Картопля', 'Цибуля', 'Капуста', 'Морква', 'Буряк', 'Гриби', 'Помідори', 'Банан', 'Часник', 'Перець', 'Кабачки', 'Баклажан', 'Лимон']
+        };
+
+        class StorageManager {
+            static get(key, defaultValue = []) {
+                try {
+                    const value = localStorage.getItem(key);
+                    return value ? JSON.parse(value) : defaultValue;
+                } catch (e) {
+                    return defaultValue;
+                }
+            }
+
+            static set(key, value) {
+                localStorage.setItem(key, JSON.stringify(value));
+            }
+
+            // History methods
+            static getHistoryItems() { return this.get('purchase_history', []); }
+            static setHistoryItems(items) { this.set('purchase_history', items); }
+            static addToHistory(item) {
+                const items = this.getHistoryItems();
+                items.unshift(item); // Add to beginning
+                this.setHistoryItems(items);
+            }
+            static updateHistoryItem(id, updatedItem) {
+                let items = this.getHistoryItems();
+                const itemIndex = items.findIndex(i => i.id === id);
+                if (itemIndex > -1) {
+                    items[itemIndex] = { ...items[itemIndex], ...updatedItem };
+                    this.setHistoryItems(items);
+                }
+            }
+            static deleteHistoryItem(id) {
+                let items = this.getHistoryItems();
+                items = items.filter(i => i.id !== id);
+                this.setHistoryItems(items);
+            }
+            static clearHistory() { localStorage.removeItem('purchase_history'); }
+        }
+
+        class ToastManager {
+            static show(message, type = 'success') {
+                const container = document.getElementById('toastContainer');
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.textContent = message;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.animationName = 'toast-out';
+                    setTimeout(() => toast.remove(), 500);
+                }, 3000);
+            }
+        }
+
+        class ThemeManager {
+            static init() {
+                const savedTheme = localStorage.getItem('theme') || 'light';
+                this.setTheme(savedTheme);
+                document.getElementById('themeToggle').addEventListener('click', () => {
+                    const newTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+                    this.setTheme(newTheme);
+                });
+            }
+            static setTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                const themeIcon = document.querySelector('.theme-icon');
+                if(themeIcon) {
+                    themeIcon.setAttribute('data-lucide', theme === 'light' ? 'moon' : 'sun');
+                    lucide.createIcons();
+                }
+            }
+        }
+        
+        let selectedPhotoBase64 = null;
+        let typeChartInstance = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            ThemeManager.init();
+            
+            setTimeout(() => {
+                document.getElementById('loadingScreen').style.display = 'none';
+                appState.updateUI();
+            }, 500);
+
+            setupEventListeners();
+            populateUnitSelect();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('backButton').addEventListener('click', () => appState.setScreen('main'));
+            document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
+            document.getElementById('photoInput').addEventListener('change', handlePhotoSelect);
+            document.getElementById('quantity').addEventListener('input', updateTotalAmount);
+            document.getElementById('pricePerUnit').addEventListener('input', updateTotalAmount);
+            document.getElementById('location').addEventListener('change', handleLocationChange);
+            
+            document.getElementById('sendPurchasesButton').addEventListener('click', () => sendAllToServer('purchasesList'));
+            document.getElementById('sendUnloadingsButton').addEventListener('click', () => sendAllToServer('unloadingList'));
+
+            // Modal listeners
+            document.getElementById('cancelEndDay').addEventListener('click', hideEndDayModal);
+            document.getElementById('confirmEndDay').addEventListener('click', endWorkDay);
+        }
+
+        function switchTab(tab) {
+            appState.setTab(tab);
+            if (tab === 'purchasesList') updateDisplay('purchasesList');
+            if (tab === 'unloadingList') updateDisplay('unloadingList');
+            if (tab === 'reports') renderReports();
+        }
+        
+        // Form Management
+        function startPurchase() {
+            appState.setScreen('purchase-form', { isUnloading: false, isDelivery: false });
+            setupPurchaseForm();
+        }
+        function startUnloading() {
+            appState.setScreen('purchase-form', { isUnloading: true, isDelivery: false });
+            setupPurchaseForm();
+        }
+        function startDelivery() {
+            appState.setScreen('purchase-form', { isUnloading: false, isDelivery: true });
+            setupPurchaseForm();
+        }
+        
+        function startEdit(itemId) {
+            const items = StorageManager.getHistoryItems();
+            const item = items.find(i => i.id === itemId);
+            if(!item) return;
+
+            const isUnloading = item.type === 'Відвантаження';
+            const isDelivery = item.type === 'Доставка';
+            
+            appState.setScreen('purchase-form', { isUnloading, isDelivery, editingItemId: itemId });
+            setupPurchaseForm();
+
+            // Populate form
+            document.getElementById('productName').value = item.productName;
+            document.getElementById('quantity').value = item.quantity;
+            document.getElementById('unit').value = item.unit;
+            document.getElementById('pricePerUnit').value = item.pricePerUnit;
+
+            const locationSelect = document.getElementById('location');
+            const locationExists = Array.from(locationSelect.options).some(opt => opt.value === item.location);
+            if(locationExists) {
+                locationSelect.value = item.location;
+                 handleLocationChange();
+            } else {
+                 locationSelect.value = 'Інше';
+                 handleLocationChange();
+                 document.getElementById('customLocation').value = item.location;
+            }
+            
+            if (item.photoBase64) {
+                selectedPhotoBase64 = item.photoBase64;
+                document.getElementById('previewImage').src = item.photoBase64;
+                document.getElementById('photoPreview').style.display = 'block';
+            }
+            
+            updateTotalAmount();
+        }
+
+        function setupPurchaseForm() {
+            document.getElementById('purchaseForm').reset();
+             document.querySelectorAll('.form-group .input-error').forEach(el => el.classList.remove('input-error'));
+            removePhoto();
+            populateDatalist();
+            
+            const priceGroup = document.getElementById('priceGroup');
+            const totalGroup = document.getElementById('totalGroup');
+            const locationLabel = document.getElementById('locationLabel');
+            const saveButtonText = document.getElementById('saveButtonText');
+            const formTitle = document.getElementById('formTitle');
+            const formSubtitle = document.getElementById('formSubtitle');
+            
+            let locations;
+            const isEditing = !!appState.editingItemId;
+            let currentType = '';
+            if (isEditing) {
+                const item = StorageManager.getHistoryItems().find(i => i.id === appState.editingItemId);
+                if(item) currentType = item.type;
+            }
+
+            const isUnloadingOrDelivery = (!isEditing && (appState.isUnloading || appState.isDelivery)) || (isEditing && (currentType === 'Відвантаження' || currentType === 'Доставка'));
+
+            if (isUnloadingOrDelivery) {
+                priceGroup.style.display = 'none';
+                totalGroup.style.display = 'none';
+                locationLabel.textContent = 'Магазин (відвантаження/доставка)';
+                locations = appConfig.unloadingLocations;
+            } else { // Purchase
+                priceGroup.style.display = 'block';
+                totalGroup.style.display = 'block';
+                locationLabel.textContent = 'Локація закупки';
+                locations = appConfig.marketLocations;
+            }
+            
+            if (isEditing) {
+                formTitle.textContent = 'Редагувати запис';
+                formSubtitle.textContent = 'Змініть дані та збережіть';
+                saveButtonText.textContent = 'Оновити запис';
+            } else if (isUnloadingOrDelivery) {
+                formTitle.textContent = 'Нове відвантаження';
+                formSubtitle.textContent = 'Вкажіть дані для переміщення';
+                saveButtonText.textContent = 'Зберегти локально';
+            } else {
+                formTitle.textContent = 'Нова закупівля';
+                formSubtitle.textContent = 'Вкажіть дані про товар';
+                saveButtonText.textContent = 'Зберегти локально';
+            }
+            document.querySelector('#saveButton .button-icon').setAttribute('data-lucide', isEditing ? 'save' : 'save');
+            lucide.createIcons();
+
+            setupLocationOptions(locations);
+            updateTotalAmount();
+        }
+        
+        function populateDatalist() {
+            const datalist = document.getElementById('productSuggestions');
+            datalist.innerHTML = '';
+            appConfig.products.forEach(p => datalist.innerHTML += `<option value="${p}">`);
+        }
+        
+        function populateUnitSelect() {
+            const select = document.getElementById('unit');
+            select.innerHTML = '';
+            appConfig.units.forEach(u => select.innerHTML += `<option value="${u.value}">${u.label}</option>`);
+        }
+
+        function setupLocationOptions(locations) {
+            const select = document.getElementById('location');
+            select.innerHTML = '<option value="">Оберіть...</option>';
+            locations.forEach(loc => select.innerHTML += `<option value="${loc}">${loc}</option>`);
+            select.innerHTML += `<option value="Інше">Інше</option>`;
+        }
+
+        function handleLocationChange() {
+            const group = document.getElementById('customLocationGroup');
+            group.style.display = document.getElementById('location').value === 'Інше' ? 'block' : 'none';
+        }
+
+        function updateTotalAmount() {
+            if(appState.isUnloading || appState.isDelivery) return;
+            const qty = parseFloat(document.getElementById('quantity').value) || 0;
+            const price = parseFloat(document.getElementById('pricePerUnit').value) || 0;
+            document.getElementById('totalAmount').textContent = (qty * price).toFixed(2) + ' ₴';
+        }
+
+        function handlePhotoSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                selectedPhotoBase64 = e.target.result;
+                document.getElementById('previewImage').src = e.target.result;
+                document.getElementById('photoPreview').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removePhoto() {
+            selectedPhotoBase64 = null;
+            document.getElementById('photoPreview').style.display = 'none';
+            document.getElementById('photoInput').value = '';
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            // --- Validation Logic ---
+            const isEditing = !!appState.editingItemId;
+            let type = 'Закупка';
+            if (!isEditing) {
+                if (appState.isUnloading) type = 'Відвантаження';
+                if (appState.isDelivery) type = 'Доставка';
+            } else {
+                 const item = StorageManager.getHistoryItems().find(i => i.id === appState.editingItemId);
+                 if (item) type = item.type;
+            }
+
+            const fieldsToValidate = [
+                { el: document.getElementById('productName')},
+                { el: document.getElementById('quantity')},
+                { el: document.getElementById('location')},
+            ];
+            
+            if (type === 'Закупка') {
+                fieldsToValidate.push({ el: document.getElementById('pricePerUnit') });
+            }
+            if (document.getElementById('location').value === 'Інше') {
+                fieldsToValidate.push({ el: document.getElementById('customLocation') });
+            }
+
+            let isValid = true;
+            document.querySelectorAll('.form-group .input-error').forEach(el => el.classList.remove('input-error'));
+
+            fieldsToValidate.forEach(field => {
+                const el = field.el;
+                let isFieldInvalid = false;
+                if (el.type === 'number') {
+                    isFieldInvalid = el.value === '' || parseFloat(el.value) <= 0;
+                } else {
+                    isFieldInvalid = el.value.trim() === '';
+                }
+
+                if (isFieldInvalid) {
+                    isValid = false;
+                    el.classList.add('input-error');
+                }
+            });
+
+            if (!isValid) {
+                ToastManager.show('Будь ласка, заповніть виділені поля', 'error');
+                return;
+            }
+            // --- End Validation Logic ---
+
+            const productName = document.getElementById('productName').value.trim();
+            const quantity = parseFloat(document.getElementById('quantity').value);
+            let location = document.getElementById('location').value;
+            if (location === 'Інше') {
+                location = document.getElementById('customLocation').value.trim();
+            }
+
+            const itemData = {
+                id: isEditing ? appState.editingItemId : crypto.randomUUID(),
+                productName,
+                quantity,
+                unit: document.getElementById('unit').value,
+                pricePerUnit: (type === 'Закупка') ? parseFloat(document.getElementById('pricePerUnit').value) || 0 : 0,
+                totalAmount: (type === 'Закупка') ? (quantity * (parseFloat(document.getElementById('pricePerUnit').value) || 0)) : 0,
+                location,
+                timestamp: new Date().toISOString(),
+                type,
+                photoBase64: selectedPhotoBase64,
+            };
+
+            if (isEditing) {
+                StorageManager.updateHistoryItem(appState.editingItemId, itemData);
+                ToastManager.show(`'${productName}' оновлено локально`, 'success');
+            } else {
+                StorageManager.addToHistory(itemData);
+                ToastManager.show(`'${productName}' збережено локально`, 'success');
+            }
+
+            appState.setScreen('main');
+
+            if (itemData.type === 'Закупка') {
+                appState.setTab('purchasesList');
+            } else {
+                appState.setTab('unloadingList');
+            }
+            updateDisplay(appState.tab);
+        }
+        
+        function dataURLtoBlob(dataurl) {
+            var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+                bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+            while(n--){
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], {type:mime});
+        }
+
+        async function sendAllToServer(listType) {
+            const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
+            const button = document.getElementById(buttonId);
+            const buttonIcon = button.querySelector('.button-icon');
+            const buttonSpinner = button.querySelector('.button-spinner');
+
+            button.disabled = true;
+            buttonIcon.style.display = 'none';
+            buttonSpinner.style.display = 'inline-block';
+
+            const allItems = StorageManager.getHistoryItems();
+            const itemsToSend = allItems.filter(item => {
+                if (listType === 'purchasesList') return item.type === 'Закупка';
+                return item.type === 'Відвантаження' || item.type === 'Доставка';
+            });
+
+            if (itemsToSend.length === 0) {
+                ToastManager.show('Немає записів для відправки', 'info');
+                button.disabled = false;
+                buttonIcon.style.display = 'inline-block';
+                buttonSpinner.style.display = 'none';
+                return;
+            }
+
+            const promises = itemsToSend.map(async (item) => {
+                const primaryUrl = appConfig.N8N_WEBHOOK_URL;
+                const backupUrl = primaryUrl.replace('/webhook/delivery', '/webhook-test/delivery');
+                const tryUrls = [primaryUrl, backupUrl];
+                let lastError = null;
+
+                for (const targetUrl of tryUrls) {
+                    try {
+                        const isProxy = targetUrl.startsWith('/') || targetUrl.includes(window.location.host);
+
+                        if (!isProxy) {
+                            const formData = new FormData();
+                            const itemDataToSend = { ...item };
+                            delete itemDataToSend.photoBase64;
+                            formData.append('data', JSON.stringify(itemDataToSend));
+                            if (item.photoBase64) {
+                                const photoBlob = dataURLtoBlob(item.photoBase64);
+                                formData.append('file', photoBlob, 'photo.jpg');
+                            }
+                            const response = await fetch(targetUrl, { method: 'POST', body: formData });
+                            if (!response.ok) throw new Error(`Failed for item ${item.id}`);
+                            return item.id;
+                        }
+
+                        // Proxy path: send JSON with base64 attachments
+                        const eventDate = new Date(item.timestamp);
+                        const isoDate = eventDate.toISOString();
+                        const [datePart, timePartWithMs] = isoDate.split('T');
+                        const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
+                        const toStringValue = (value) => value === undefined || value === null ? '' : String(value);
+                        const flatFields = {
+                            timestamp: toStringValue(item.timestamp),
+                            date: toStringValue(datePart),
+                            time: toStringValue(timePart),
+                            type: toStringValue(item.type),
+                            productName: toStringValue(item.productName),
+                            quantity: toStringValue(item.quantity),
+                            unit: toStringValue(item.unit),
+                            pricePerUnit: toStringValue(item.pricePerUnit),
+                            totalAmount: toStringValue(item.totalAmount),
+                            location: toStringValue(item.location)
+                        };
+                        const payload = {
+                            version: 1,
+                            submission: {
+                                id: item.id,
+                                type: item.type,
+                                timestamp: item.timestamp,
+                                productName: item.productName,
+                                quantity: item.quantity,
+                                unit: item.unit,
+                                pricePerUnit: item.pricePerUnit,
+                                totalAmount: item.totalAmount,
+                                location: item.location
+                            },
+                            context: { date: datePart, time: timePart },
+                            flat: flatFields
+                        };
+                        if (item.photoBase64) {
+                            const base64 = item.photoBase64.includes(',') ? item.photoBase64.split(',')[1] : item.photoBase64;
+                            payload.attachments = [{ name: 'photo.jpg', type: 'image/jpeg', size: base64.length * 0.75, encoding: 'base64', content: base64 }];
+                        }
+                        const response = await fetch(targetUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (!response.ok) throw new Error(`Failed for item ${item.id}`);
+                        return item.id;
+                    } catch (err) {
+                        lastError = err;
+                        continue;
+                    }
+                }
+                console.error(lastError);
+                return null;
+            });
+
+            const results = await Promise.all(promises);
+            const successfulIds = new Set(results.filter(id => id !== null));
+            const failedCount = itemsToSend.length - successfulIds.size;
+
+            const remainingItems = allItems.filter(item => !successfulIds.has(item.id));
+            StorageManager.setHistoryItems(remainingItems);
+            
+            updateDisplay(listType);
+
+            if (failedCount > 0) {
+                ToastManager.show(`Відправлено: ${successfulIds.size}. Помилка: ${failedCount}`, 'error');
+            } else {
+                ToastManager.show(`Всі ${successfulIds.size} записи успішно відправлено`, 'success');
+            }
+            
+            button.disabled = false;
+            buttonIcon.style.display = 'inline-block';
+            buttonSpinner.style.display = 'none';
+        }
+
+        function updateDisplay(listType) {
+            const allItems = StorageManager.getHistoryItems();
+            let itemsToShow;
+            let container, summary, empty;
+
+            if (listType === 'purchasesList') {
+                itemsToShow = allItems.filter(item => item.type === 'Закупка');
+                container = document.getElementById('purchasesListItems');
+                summary = document.getElementById('purchasesListSummary');
+                empty = document.getElementById('purchasesListEmpty');
+            } else { // unloadingList
+                itemsToShow = allItems.filter(item => item.type === 'Відвантаження' || item.type === 'Доставка');
+                container = document.getElementById('unloadingListItems');
+                summary = document.getElementById('unloadingListSummary');
+                empty = document.getElementById('unloadingListEmpty');
+            }
+
+            container.innerHTML = '';
+
+            if(itemsToShow.length > 0) {
+                empty.style.display = 'none';
+                
+                itemsToShow.forEach(item => {
+                    const itemEl = document.createElement('div');
+                    itemEl.className = 'cart-item';
+                    const unitLabel = appConfig.units.find(u => u.value === item.unit)?.label || item.unit;
+                    const photoPreviewHTML = item.photoBase64 ? `<img src="${item.photoBase64}" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; margin-right: 12px;">` : '<div style="width: 40px; height: 40px; margin-right: 12px;"></div>';
+
+                    itemEl.innerHTML = `
+                        <div class="cart-item-header">
+                            <div style="display: flex; align-items: center; flex-grow: 1;">
+                                ${photoPreviewHTML}
+                                <div>
+                                    <div class="cart-item-name">${item.productName}</div>
+                                    <div class="cart-item-category">${item.type}</div>
+                                </div>
+                            </div>
+                            <div class="cart-item-actions">
+                                <button onclick="startEdit('${item.id}')"><i data-lucide="edit-2"></i></button>
+                                <button class="delete" onclick="deleteItem('${item.id}')"><i data-lucide="trash-2"></i></button>
+                            </div>
+                        </div>
+                        <div class="cart-item-details">
+                            <div><span class="cart-item-detail-label">Кількість:</span> ${item.quantity} ${unitLabel}</div>
+                            <div><span class="cart-item-detail-label">Локація:</span> ${item.location}</div>
+                            <div class="cart-item-total"><span class="cart-item-detail-label">Сума:</span> ${item.totalAmount.toFixed(2)} ₴</div>
+                        </div>
+                    `;
+                    container.appendChild(itemEl);
+                });
+                summary.textContent = `${itemsToShow.length} запис(ів)`;
+            } else {
+                empty.style.display = 'block';
+                summary.textContent = 'Ще немає записів';
+            }
+            lucide.createIcons();
+        }
+
+        function deleteItem(id) {
+            const itemToDelete = StorageManager.getHistoryItems().find(item => item.id === id);
+            StorageManager.deleteHistoryItem(id);
+            if (itemToDelete.type === 'Закупка') {
+                updateDisplay('purchasesList');
+            } else {
+                updateDisplay('unloadingList');
+            }
+            ToastManager.show('Запис видалено', 'success');
+        }
+
+        // Reports Page
+        function renderReports() {
+            const items = StorageManager.getHistoryItems();
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = ''; // Clear previous stats
+
+            const totalSpent = items.reduce((sum, item) => sum + item.totalAmount, 0);
+            const totalItems = items.length;
+            
+            const stats = [
+                { label: 'Всього витрачено', value: `${totalSpent.toFixed(2)} ₴` },
+                { label: 'Всього операцій', value: totalItems },
+            ];
+
+            stats.forEach(stat => {
+                statsGrid.innerHTML += `
+                    <div class="stat-card">
+                        <div class="stat-card-value">${stat.value}</div>
+                        <div class="stat-card-label">${stat.label}</div>
+                    </div>
+                `;
+            });
+
+            // Chart
+            const ctx = document.getElementById('typeChart').getContext('2d');
+            const dataByType = items.reduce((acc, item) => {
+                acc[item.type] = (acc[item.type] || 0) + item.totalAmount;
+                return acc;
+            }, {});
+
+            if(typeChartInstance) {
+                typeChartInstance.destroy();
+            }
+
+            typeChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(dataByType),
+                    datasets: [{
+                        label: 'Витрати за типом',
+                        data: Object.values(dataByType),
+                        backgroundColor: ['#4f46e5', '#10b981', '#f59e0b'],
+                        borderColor: 'var(--card)',
+                        borderWidth: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: 'var(--foreground)' } },
+                    }
+                }
+            });
+        }
+
+        // End Day Modal
+        function showEndDayModal() {
+            document.getElementById('endDayModal').classList.add('visible');
+        }
+        function hideEndDayModal() {
+            document.getElementById('endDayModal').classList.remove('visible');
+        }
+        function endWorkDay() {
+            StorageManager.clearHistory();
+            updateDisplay('purchasesList');
+            updateDisplay('unloadingList');
+            hideEndDayModal();
+            ToastManager.show('Робочий день завершено. Історію очищено.', 'success');
+        }
+
+        // Make functions globally accessible for inline onclick handlers
+        window.switchTab = switchTab;
+        window.startPurchase = startPurchase;
+        window.startUnloading = startUnloading;
+        window.startDelivery = startDelivery;
+        window.startEdit = startEdit;
+        window.deleteItem = deleteItem;
+        window.showEndDayModal = showEndDayModal;
+        window.removePhoto = removePhoto;
+    </script>
+</body>
+</html>
+
+
+
+
