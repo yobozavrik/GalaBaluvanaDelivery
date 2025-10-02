@@ -656,130 +656,126 @@
             return `${safeName}-${timestamp}.${extension}`;
         }
 
-        async function sendAllToServer(listType) {
-            const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
-            const button = document.getElementById(buttonId);
-            const buttonIcon = button.querySelector('.button-icon');
-            const buttonSpinner = button.querySelector('.button-spinner');
+        async function sendAllToServer(listType, gapMs = 120) {
+  const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
+  const button = document.getElementById(buttonId);
+  const buttonIcon = button.querySelector('.button-icon');
+  const buttonSpinner = button.querySelector('.button-spinner');
 
-            button.disabled = true;
-            buttonIcon.style.display = 'none';
-            buttonSpinner.style.display = 'inline-block';
+  button.disabled = true;
+  buttonIcon.style.display = 'none';
+  buttonSpinner.style.display = 'inline-block';
 
-            const allItems = StorageManager.getHistoryItems();
-            const itemsById = new Map(allItems.map(item => [item.id, item]));
-            const itemsToSend = allItems.filter(item => {
-                if (listType === 'purchasesList') return item.type === 'Закупка';
-                return item.type === 'Відвантаження' || item.type === 'Доставка';
-            });
+  const allItems = StorageManager.getHistoryItems();
+  const itemsToSend = allItems.filter(item => {
+    if (listType === 'purchasesList') return item.type === 'Закупка';
+    return item.type === 'Відвантаження' || item.type === 'Доставка';
+  });
 
-            if (itemsToSend.length === 0) {
-                ToastManager.show('Немає записів для відправки', 'info');
-                button.disabled = false;
-                buttonIcon.style.display = 'inline-block';
-                buttonSpinner.style.display = 'none';
-                return;
-            }
+  if (itemsToSend.length === 0) {
+    ToastManager.show('Немає записів для відправки', 'info');
+    button.disabled = false;
+    buttonIcon.style.display = 'inline-block';
+    buttonSpinner.style.display = 'none';
+    return;
+  }
 
-            console.log(`📤 Отправка ${itemsToSend.length} записей...`);
+  console.log(`📤 Отправка ${itemsToSend.length} записей по очереди с паузой ${gapMs} мс...`);
 
-            const promises = itemsToSend.map(async (item, index) => {
-                try {
-                    console.log(`📦 [${index + 1}/${itemsToSend.length}] Отправка: ${item.productName}`);
-                    
-                    // Подготовка основных данных
-                    const eventDate = new Date(item.timestamp);
-                    const isoDate = eventDate.toISOString();
-                    const [datePart, timePartWithMs] = isoDate.split('T');
-                    const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
-                    
-                    // ПРОСТОЙ ФОРМАТ - прямо как в старом app.js
-                    const payload = {
-                        id: item.id,
-                        type: item.type,
-                        timestamp: item.timestamp,
-                        date: datePart,
-                        time: timePart,
-                        productName: item.productName,
-                        quantity: item.quantity,
-                        unit: item.unit,
-                        pricePerUnit: item.pricePerUnit,
-                        totalAmount: item.totalAmount,
-                        location: item.location
-                    };
+  const successfulIds = new Set();
+  // Если хочешь слать напрямую в n8n — укажи тут прямой хук:
+  // const apiUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+  // Если используешь свой прокси (/api/delivery), оставь так:
+  const apiUrl = appConfig.N8N_WEBHOOK_URL || '/api/delivery';
 
-                    const formData = new FormData();
-                    formData.append('data', JSON.stringify(payload));
+  for (let i = 0; i < itemsToSend.length; i++) {
+    const item = itemsToSend[i];
 
-                    const storedItem = itemsById.get(item.id) || item;
-                    const photoBase64 = storedItem.photoBase64;
-                    if (photoBase64) {
-                        const blob = dataURLToBlob(photoBase64);
-                        if (blob) {
-                            const filename = buildPhotoFilename(storedItem, blob.type);
-                            formData.append('file', blob, filename);
-                            console.log(`📸 Фото додано як файл '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
-                        }
-                    }
+    try {
+      console.log(`📦 [${i + 1}/${itemsToSend.length}] ${item.productName}`);
 
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000);
-                    
-                    try {
-                        const apiUrl = '/api/delivery';
+      // Подготовка основных данных
+      const eventDate = new Date(item.timestamp);
+      const isoDate = eventDate.toISOString();
+      const [datePart, timePartWithMs] = isoDate.split('T');
+      const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
 
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            body: formData,
-                            signal: controller.signal,
-                            mode: 'cors'
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        const responseText = await response.text();
-                        
-                        if (!response.ok) {
-                            console.error(`❌ HTTP ${response.status}:`, responseText);
-                            throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 100)}`);
-                        }
-                        
-                        console.log(`✅ Успешно отправлено: ${item.productName}`);
-                        return item.id;
-                        
-                    } catch (fetchError) {
-                        clearTimeout(timeoutId);
-                        throw fetchError;
-                    }
-                    
-                } catch (error) {
-                    console.error(`❌ Ошибка отправки [${item.productName}]:`, error.message);
-                    return null;
-                }
-            });
+      const payload = {
+        id: item.id,
+        type: item.type,
+        timestamp: item.timestamp,
+        date: datePart,
+        time: timePart,
+        productName: item.productName,
+        quantity: item.quantity,
+        unit: item.unit,
+        pricePerUnit: item.pricePerUnit,
+        totalAmount: item.totalAmount,
+        location: item.location
+      };
 
-            const results = await Promise.all(promises);
-            const successfulIds = new Set(results.filter(id => id !== null));
-            const failedCount = itemsToSend.length - successfulIds.size;
+      const formData = new FormData();
+      formData.append('data', JSON.stringify(payload));
 
-            console.log(`📊 Результат: ${successfulIds.size} успешно, ${failedCount} ошибок`);
-
-            // Удаляем только успешно отправленные
-            const remainingItems = allItems.filter(item => !successfulIds.has(item.id));
-            StorageManager.setHistoryItems(remainingItems);
-            
-            updateDisplay(listType);
-
-            if (failedCount > 0) {
-                ToastManager.show(`Відправлено: ${successfulIds.size}. Помилка: ${failedCount}`, 'error');
-            } else {
-                ToastManager.show(`Всі ${successfulIds.size} записи успішно відправлено`, 'success');
-            }
-            
-            button.disabled = false;
-            buttonIcon.style.display = 'inline-block';
-            buttonSpinner.style.display = 'none';
+      if (item.photoBase64) {
+        const blob = dataURLToBlob(item.photoBase64);
+        if (blob) {
+          const filename = buildPhotoFilename(item, blob.type);
+          formData.append('file', blob, filename);
+          console.log(`📸 Фото як файл: '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
         }
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData,      // ВАЖНО: multipart/form-data, boundary выставит браузер
+        signal: controller.signal,
+        mode: 'cors',
+        // keepalive: true,  // можно включить, если вкладка иногда закрывается
+      });
+
+      clearTimeout(timeoutId);
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        console.error(`❌ HTTP ${response.status}:`, responseText);
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      console.log(`✅ Успешно: ${item.productName}`);
+      successfulIds.add(item.id);
+
+    } catch (e) {
+      console.error(`❌ Ошибка [${item.productName}]:`, e?.message || e);
+    }
+
+    // Пауза между запросами
+    if (i < itemsToSend.length - 1) {
+      await sleep(gapMs);
+    }
+  }
+
+  const failedCount = itemsToSend.length - successfulIds.size;
+  console.log(`📊 Готово: ${successfulIds.size} ок, ${failedCount} ошибок`);
+
+  // Чистим только успешно отправленные
+  const remainingItems = allItems.filter(item => !successfulIds.has(item.id));
+  StorageManager.setHistoryItems(remainingItems);
+  updateDisplay(listType);
+
+  if (failedCount > 0) {
+    ToastManager.show(`Відправлено: ${successfulIds.size}. Помилка: ${failedCount}`, 'error');
+  } else {
+    ToastManager.show(`Всі ${successfulIds.size} записи успішно відправлено`, 'success');
+  }
+
+  button.disabled = false;
+  buttonIcon.style.display = 'inline-block';
+  buttonSpinner.style.display = 'none';
+}
 
         function updateDisplay(listType) {
             const allItems = StorageManager.getHistoryItems();
