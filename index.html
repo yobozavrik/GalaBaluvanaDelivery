@@ -623,7 +623,39 @@
             updateDisplay(appState.tab);
         }
         
-        // УПРОЩЕННАЯ ОТПРАВКА: base64 в JSON (без FormData)
+        function dataURLToBlob(dataUrl) {
+            if (typeof dataUrl !== 'string') return null;
+            const parts = dataUrl.split(',');
+            if (parts.length < 2) return null;
+
+            const meta = parts[0];
+            const base64Data = parts[1];
+            const mimeMatch = meta.match(/data:(.*?);base64/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+
+            try {
+                const byteString = atob(base64Data);
+                const arrayBuffer = new Uint8Array(byteString.length);
+                for (let i = 0; i < byteString.length; i++) {
+                    arrayBuffer[i] = byteString.charCodeAt(i);
+                }
+                return new Blob([arrayBuffer], { type: mimeType });
+            } catch (error) {
+                console.error('Не вдалося перетворити фото у Blob:', error);
+                return null;
+            }
+        }
+
+        function buildPhotoFilename(item, mimeType) {
+            const safeName = (item.productName || 'photo')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/gi, '-')
+                .replace(/^-+|-+$/g, '') || 'photo';
+            const timestamp = item.timestamp ? new Date(item.timestamp).toISOString().replace(/[:.]/g, '-') : Date.now();
+            const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+            return `${safeName}-${timestamp}.${extension}`;
+        }
+
         async function sendAllToServer(listType) {
             const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
             const button = document.getElementById(buttonId);
@@ -635,6 +667,7 @@
             buttonSpinner.style.display = 'inline-block';
 
             const allItems = StorageManager.getHistoryItems();
+            const itemsById = new Map(allItems.map(item => [item.id, item]));
             const itemsToSend = allItems.filter(item => {
                 if (listType === 'purchasesList') return item.type === 'Закупка';
                 return item.type === 'Відвантаження' || item.type === 'Доставка';
@@ -674,24 +707,30 @@
                         totalAmount: item.totalAmount,
                         location: item.location
                     };
-                    
-                    // Добавляем фото как data URL (если есть)
-                    if (item.photoBase64) {
-                        payload.photoUrl = item.photoBase64; // Полный data:image/jpeg;base64,...
-                        console.log(`📸 Фото добавлено: ${(item.photoBase64.length / 1024).toFixed(2)} KB`);
+
+                    const formData = new FormData();
+                    formData.append('data', JSON.stringify(payload));
+
+                    const storedItem = itemsById.get(item.id) || item;
+                    const photoBase64 = storedItem.photoBase64;
+                    if (photoBase64) {
+                        const blob = dataURLToBlob(photoBase64);
+                        if (blob) {
+                            const filename = buildPhotoFilename(storedItem, blob.type);
+                            formData.append('file', blob, filename);
+                            console.log(`📸 Фото додано як файл '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
+                        }
                     }
-                    
+
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 30000);
                     
                     try {
-                        // Всегда используем прямой URL к n8n
-                        const directUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
-                        
-                        const response = await fetch(directUrl, {
+                        const apiUrl = '/api/delivery';
+
+                        const response = await fetch(apiUrl, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload),
+                            body: formData,
                             signal: controller.signal,
                             mode: 'cors'
                         });
