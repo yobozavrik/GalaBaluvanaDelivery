@@ -623,7 +623,7 @@
             updateDisplay(appState.tab);
         }
         
-        // ИСПРАВЛЕНА ФУНКЦИЯ ОТПРАВКИ С ПОДДЕРЖКОЙ ФОТО И ДЕТАЛЬНЫМ ЛОГИРОВАНИЕМ
+        // ГИБРИДНАЯ ОТПРАВКА: FormData для больших фото, JSON для остального
         async function sendAllToServer(listType) {
             const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
             const button = document.getElementById(buttonId);
@@ -652,94 +652,93 @@
 
             const promises = itemsToSend.map(async (item, index) => {
                 try {
-                    const targetUrl = appConfig.N8N_WEBHOOK_URL;
-                    
                     console.log(`📦 [${index + 1}/${itemsToSend.length}] Отправка: ${item.productName}`);
                     
-                    // Подготовка данных для отправки через прокси /api/delivery
+                    // Подготовка основных данных
                     const eventDate = new Date(item.timestamp);
                     const isoDate = eventDate.toISOString();
                     const [datePart, timePartWithMs] = isoDate.split('T');
                     const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
                     
-                    const toStringValue = (value) => value === undefined || value === null ? '' : String(value);
-                    
-                    const flatFields = {
-                        timestamp: toStringValue(item.timestamp),
-                        date: toStringValue(datePart),
-                        time: toStringValue(timePart),
-                        type: toStringValue(item.type),
-                        productName: toStringValue(item.productName),
-                        quantity: toStringValue(item.quantity),
-                        unit: toStringValue(item.unit),
-                        pricePerUnit: toStringValue(item.pricePerUnit),
-                        totalAmount: toStringValue(item.totalAmount),
-                        location: toStringValue(item.location)
+                    const itemData = {
+                        id: item.id,
+                        type: item.type,
+                        timestamp: item.timestamp,
+                        date: datePart,
+                        time: timePart,
+                        productName: item.productName,
+                        quantity: item.quantity,
+                        unit: item.unit,
+                        pricePerUnit: item.pricePerUnit,
+                        totalAmount: item.totalAmount,
+                        location: item.location
                     };
                     
-                    const payload = {
-                        version: 1,
-                        submission: {
-                            id: item.id,
-                            type: item.type,
-                            timestamp: item.timestamp,
-                            productName: item.productName,
-                            quantity: item.quantity,
-                            unit: item.unit,
-                            pricePerUnit: item.pricePerUnit,
-                            totalAmount: item.totalAmount,
-                            location: item.location
-                        },
-                        context: { date: datePart, time: timePart },
-                        flat: flatFields
-                    };
-                    
-                    // Добавляем фото в формате base64
-                    if (item.photoBase64) {
-                        try {
-                            let base64Content = item.photoBase64;
-                            
-                            // Убираем data:image/jpeg;base64, если есть
-                            if (base64Content.includes(',')) {
-                                base64Content = base64Content.split(',')[1];
-                            }
-                            
-                            // Проверяем что base64 валидный
-                            if (!base64Content || base64Content.length < 100) {
-                                throw new Error('Invalid base64 content');
-                            }
-                            
-                            const estimatedSize = Math.round(base64Content.length * 0.75);
-                            
-                            payload.attachments = [{
-                                name: `photo_${item.id}.jpg`,
-                                type: 'image/jpeg',
-                                size: estimatedSize,
-                                encoding: 'base64',
-                                content: base64Content
-                            }];
-                            
-                            console.log(`📸 Фото добавлено: ${(estimatedSize / 1024).toFixed(2)} KB`);
-                        } catch (photoError) {
-                            console.warn('⚠️ Ошибка обработки фото:', photoError);
-                            // Продолжаем без фото
-                        }
-                    }
-                    
-                    console.log('📨 Payload размер:', JSON.stringify(payload).length, 'bytes');
-                    
+                    let response;
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
                     
                     try {
-                        const response = await fetch(targetUrl, {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify(payload),
-                            signal: controller.signal
-                        });
+                        // Если есть фото - используем прямой запрос к n8n с FormData
+                        if (item.photoBase64) {
+                            console.log('📸 Отправка с фото через FormData...');
+                            
+                            const formData = new FormData();
+                            formData.append('data', JSON.stringify(itemData));
+                            
+                            // Конвертируем base64 в Blob
+                            const base64Data = item.photoBase64.split(',')[1] || item.photoBase64;
+                            const byteCharacters = atob(base64Data);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }
+                            const byteArray = new Uint8Array(byteNumbers);
+                            const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                            
+                            formData.append('file', blob, `photo_${item.id}.jpg`);
+                            
+                            console.log(`📸 Размер фото: ${(blob.size / 1024).toFixed(2)} KB`);
+                            
+                            // Прямой запрос к n8n (обходим прокси)
+                            const directUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+                            
+                            response = await fetch(directUrl, {
+                                method: 'POST',
+                                body: formData,
+                                signal: controller.signal,
+                                mode: 'cors'
+                            });
+                            
+                        } else {
+                            // Без фото - через прокси с JSON
+                            console.log('📄 Отправка без фото через JSON...');
+                            
+                            const payload = {
+                                version: 1,
+                                submission: itemData,
+                                context: { date: datePart, time: timePart },
+                                flat: {
+                                    timestamp: String(itemData.timestamp),
+                                    date: String(datePart),
+                                    time: String(timePart),
+                                    type: String(itemData.type),
+                                    productName: String(itemData.productName),
+                                    quantity: String(itemData.quantity),
+                                    unit: String(itemData.unit),
+                                    pricePerUnit: String(itemData.pricePerUnit),
+                                    totalAmount: String(itemData.totalAmount),
+                                    location: String(itemData.location)
+                                }
+                            };
+                            
+                            response = await fetch(appConfig.N8N_WEBHOOK_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload),
+                                signal: controller.signal
+                            });
+                        }
                         
                         clearTimeout(timeoutId);
                         
