@@ -623,7 +623,7 @@
             updateDisplay(appState.tab);
         }
         
-        // ГИБРИДНАЯ ОТПРАВКА: FormData для больших фото, JSON для остального
+        // УПРОЩЕННАЯ ОТПРАВКА: base64 в JSON (без FormData)
         async function sendAllToServer(listType) {
             const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
             const button = document.getElementById(buttonId);
@@ -660,7 +660,8 @@
                     const [datePart, timePartWithMs] = isoDate.split('T');
                     const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
                     
-                    const itemData = {
+                    // ПРОСТОЙ ФОРМАТ - прямо как в старом app.js
+                    const payload = {
                         id: item.id,
                         type: item.type,
                         timestamp: item.timestamp,
@@ -674,71 +675,26 @@
                         location: item.location
                     };
                     
-                    let response;
+                    // Добавляем фото как data URL (если есть)
+                    if (item.photoBase64) {
+                        payload.photoUrl = item.photoBase64; // Полный data:image/jpeg;base64,...
+                        console.log(`📸 Фото добавлено: ${(item.photoBase64.length / 1024).toFixed(2)} KB`);
+                    }
+                    
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 30000);
                     
                     try {
-                        // Если есть фото - используем прямой запрос к n8n с FormData
-                        if (item.photoBase64) {
-                            console.log('📸 Отправка с фото через FormData...');
-                            
-                            const formData = new FormData();
-                            formData.append('data', JSON.stringify(itemData));
-                            
-                            // Конвертируем base64 в Blob
-                            const base64Data = item.photoBase64.split(',')[1] || item.photoBase64;
-                            const byteCharacters = atob(base64Data);
-                            const byteNumbers = new Array(byteCharacters.length);
-                            for (let i = 0; i < byteCharacters.length; i++) {
-                                byteNumbers[i] = byteCharacters.charCodeAt(i);
-                            }
-                            const byteArray = new Uint8Array(byteNumbers);
-                            const blob = new Blob([byteArray], { type: 'image/jpeg' });
-                            
-                            formData.append('file', blob, `photo_${item.id}.jpg`);
-                            
-                            console.log(`📸 Размер фото: ${(blob.size / 1024).toFixed(2)} KB`);
-                            
-                            // Прямой запрос к n8n (обходим прокси)
-                            const directUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
-                            
-                            response = await fetch(directUrl, {
-                                method: 'POST',
-                                body: formData,
-                                signal: controller.signal,
-                                mode: 'cors'
-                            });
-                            
-                        } else {
-                            // Без фото - через прокси с JSON
-                            console.log('📄 Отправка без фото через JSON...');
-                            
-                            const payload = {
-                                version: 1,
-                                submission: itemData,
-                                context: { date: datePart, time: timePart },
-                                flat: {
-                                    timestamp: String(itemData.timestamp),
-                                    date: String(datePart),
-                                    time: String(timePart),
-                                    type: String(itemData.type),
-                                    productName: String(itemData.productName),
-                                    quantity: String(itemData.quantity),
-                                    unit: String(itemData.unit),
-                                    pricePerUnit: String(itemData.pricePerUnit),
-                                    totalAmount: String(itemData.totalAmount),
-                                    location: String(itemData.location)
-                                }
-                            };
-                            
-                            response = await fetch(appConfig.N8N_WEBHOOK_URL, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload),
-                                signal: controller.signal
-                            });
-                        }
+                        // Всегда используем прямой URL к n8n
+                        const directUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+                        
+                        const response = await fetch(directUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal,
+                            mode: 'cors'
+                        });
                         
                         clearTimeout(timeoutId);
                         
