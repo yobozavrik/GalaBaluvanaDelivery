@@ -656,7 +656,9 @@
             return `${safeName}-${timestamp}.${extension}`;
         }
 
-        async function sendAllToServer(listType, gapMs = 120) {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function sendAllToServer(listType, gapMs = 150, perRequestTimeoutMs = 12000) {
   const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
   const button = document.getElementById(buttonId);
   const buttonIcon = button.querySelector('.button-icon');
@@ -680,21 +682,21 @@
     return;
   }
 
-  console.log(`📤 Отправка ${itemsToSend.length} записей по очереди с паузой ${gapMs} мс...`);
+  console.log(`📤 Отправка ${itemsToSend.length} записей...`);
+
+  // ЯВНО: шлём прямо в n8n, чтобы исключить подвисание прокси /api/delivery
+  const apiUrl =
+    (typeof window !== 'undefined' && window.__SECURE_WEBHOOK_URL__) ||
+    'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
 
   const successfulIds = new Set();
-  // Если хочешь слать напрямую в n8n — укажи тут прямой хук:
-  // const apiUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
-  // Если используешь свой прокси (/api/delivery), оставь так:
-  const apiUrl = appConfig.N8N_WEBHOOK_URL || '/api/delivery';
 
   for (let i = 0; i < itemsToSend.length; i++) {
     const item = itemsToSend[i];
+    console.log(`📦 [${i + 1}/${itemsToSend.length}] ${item.productName}`);
 
     try {
-      console.log(`📦 [${i + 1}/${itemsToSend.length}] ${item.productName}`);
-
-      // Подготовка основных данных
+      // подготовка payload
       const eventDate = new Date(item.timestamp);
       const isoDate = eventDate.toISOString();
       const [datePart, timePartWithMs] = isoDate.split('T');
@@ -722,60 +724,41 @@
         if (blob) {
           const filename = buildPhotoFilename(item, blob.type);
           formData.append('file', blob, filename);
-          console.log(`📸 Фото як файл: '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
+          console.log(`📸 файл: ${filename} (${(blob.size / 1024).toFixed(1)} KB)`);
         }
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), perRequestTimeoutMs);
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        body: formData,      // ВАЖНО: multipart/form-data, boundary выставит браузер
-        signal: controller.signal,
-        mode: 'cors',
-        // keepalive: true,  // можно включить, если вкладка иногда закрывается
-      });
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+          mode: 'cors',
+          // keepalive: true, // можно включить если вкладка иногда закрывается
+        });
 
-      clearTimeout(timeoutId);
-      const responseText = await response.text();
+        const text = await res.text();
+        if (!res.ok) {
+          console.error(`❌ HTTP ${res.status}`, text);
+          throw new Error(`HTTP ${res.status}`);
+        }
 
-      if (!response.ok) {
-        console.error(`❌ HTTP ${response.status}:`, responseText);
-        throw new Error(`HTTP ${response.status}`);
+        console.log('✅ ok:', item.productName);
+        successfulIds.add(item.id);
+      } catch (err) {
+        console.error('❌ fetch error:', err?.message || err);
+      } finally {
+        clearTimeout(timeoutId); // всегда чистим, чтобы не текли таймеры
       }
-
-      console.log(`✅ Успешно: ${item.productName}`);
-      successfulIds.add(item.id);
-
     } catch (e) {
-      console.error(`❌ Ошибка [${item.productName}]:`, e?.message || e);
+      console.error('❌ unexpected:', e?.message || e);
     }
 
-    // Пауза между запросами
-    if (i < itemsToSend.length - 1) {
-      await sleep(gapMs);
-    }
-  }
+    // короткая пауза, чтобы
 
-  const failedCount = itemsToSend.length - successfulIds.size;
-  console.log(`📊 Готово: ${successfulIds.size} ок, ${failedCount} ошибок`);
-
-  // Чистим только успешно отправленные
-  const remainingItems = allItems.filter(item => !successfulIds.has(item.id));
-  StorageManager.setHistoryItems(remainingItems);
-  updateDisplay(listType);
-
-  if (failedCount > 0) {
-    ToastManager.show(`Відправлено: ${successfulIds.size}. Помилка: ${failedCount}`, 'error');
-  } else {
-    ToastManager.show(`Всі ${successfulIds.size} записи успішно відправлено`, 'success');
-  }
-
-  button.disabled = false;
-  buttonIcon.style.display = 'inline-block';
-  buttonSpinner.style.display = 'none';
-}
 
         function updateDisplay(listType) {
             const allItems = StorageManager.getHistoryItems();
