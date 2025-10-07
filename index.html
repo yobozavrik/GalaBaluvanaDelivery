@@ -263,8 +263,32 @@ const appState=new AppState();
 
 /* ---------- CONFIG ---------- */
 const getSecureWebhookUrl=()=>{
-  // можешь переопределить window.__SECURE_WEBHOOK_URL__ при необходимости
-  return (typeof window!=='undefined' && window.__SECURE_WEBHOOK_URL__) || 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+  const productionDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+  const testDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
+  const localProxyUrl='http://localhost:3000/api/delivery';
+
+  if(typeof window!=='undefined'){
+    if(window.__SECURE_WEBHOOK_URL__) return window.__SECURE_WEBHOOK_URL__;
+
+    try{
+      const params=new URLSearchParams(window.location?.search ?? '');
+      const requestedWebhook=params.get('webhook');
+      if(requestedWebhook){
+        const normalized=requestedWebhook.toLowerCase();
+        if(normalized==='test') return testDirectUrl;
+        if(normalized==='production') return productionDirectUrl;
+      }
+    }catch(error){
+      console.warn('Не удалось прочитать параметры URL для выбора webhook.',error);
+    }
+
+    const hostname=window.location?.hostname ?? '';
+    if(hostname==='localhost' || hostname==='127.0.0.1'){
+      return localProxyUrl;
+    }
+  }
+
+  return productionDirectUrl;
 };
 const appConfig={
   N8N_WEBHOOK_URL:getSecureWebhookUrl(),

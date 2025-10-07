@@ -73,16 +73,36 @@ class SecureConfig {
             }
         }
 
-        const productionUrl = '/api/delivery';
-        const localUrl = 'http://localhost:3000/api/delivery';
+        const productionProxyUrl = '/api/delivery';
+        const localProxyUrl = 'http://localhost:3000/api/delivery';
+        const productionDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+        const testDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
 
-        let defaultUrl = productionUrl;
+        let defaultUrl = productionProxyUrl;
 
         if (typeof window !== 'undefined') {
             const hostname = window.location?.hostname ?? '';
             const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
             if (isLocalhost) {
-                defaultUrl = localUrl;
+                defaultUrl = localProxyUrl;
+            }
+
+            try {
+                const params = new URLSearchParams(window.location?.search ?? '');
+                const requestedWebhook = params.get('webhook');
+                if (requestedWebhook) {
+                    const normalized = requestedWebhook.toLowerCase();
+                    if (normalized === 'test') {
+                        console.log('🔁 Переключение на тестовый webhook (?webhook=test).');
+                        return testDirectUrl;
+                    }
+                    if (normalized === 'production') {
+                        console.log('🔁 Переключение на продукционный webhook (?webhook=production).');
+                        return productionDirectUrl;
+                    }
+                }
+            } catch (error) {
+                console.warn('Не удалось прочитать параметры URL для выбора webhook.', error);
             }
         }
 
