@@ -263,60 +263,25 @@ const appState=new AppState();
 
 /* ---------- CONFIG ---------- */
 const getSecureWebhookUrl=()=>{
-  const productionProxyUrl='/api/delivery';
-  const localProxyUrl='http://localhost:3000/api/delivery';
-  const productionDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook/delivery';
-  const testDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
-
-  const adjustTargetParam=(url,target)=>{
-    if(!url) return url;
-    const absolutePattern=/^[a-zA-Z][a-zA-Z\d+\-.]*:/;
-    const isAbsolute=absolutePattern.test(url);
-    const parsed=isAbsolute?new URL(url):new URL(url,'http://placeholder.local');
-    if(target==='test') parsed.searchParams.set('target','test');
-    else parsed.searchParams.delete('target');
-    if(isAbsolute) return parsed.toString();
-    const serialized=parsed.pathname+(parsed.search?parsed.search:'');
-    return serialized||'/';
-  };
+ main
 
   if(typeof window!=='undefined'){
     if(window.__SECURE_WEBHOOK_URL__) return window.__SECURE_WEBHOOK_URL__;
 
-    let baseUrl=productionProxyUrl;
-    let requested='auto';
-
+ main
     try{
       const params=new URLSearchParams(window.location?.search ?? '');
       const requestedWebhook=params.get('webhook');
       if(requestedWebhook){
         const normalized=requestedWebhook.toLowerCase();
-        if(normalized==='test' || normalized==='production') requested=normalized;
+ main
       }
     }catch(error){
       console.warn('Не удалось прочитать параметры URL для выбора webhook.',error);
     }
 
     const hostname=window.location?.hostname ?? '';
-    if(hostname==='localhost' || hostname==='127.0.0.1') baseUrl=localProxyUrl;
-
-    const isProxy=typeof baseUrl==='string' && baseUrl.includes('/api/delivery');
-
-    if(requested==='test'){
-      if(isProxy) return adjustTargetParam(baseUrl,'test');
-      return testDirectUrl;
-    }
-
-    if(requested==='production'){
-      if(isProxy) return adjustTargetParam(baseUrl,null);
-      return productionDirectUrl;
-    }
-
-    if(isProxy) return adjustTargetParam(baseUrl,null);
-    return productionDirectUrl;
-  }
-
-  return productionProxyUrl;
+ main
 };
 const appConfig={
   N8N_WEBHOOK_URL:getSecureWebhookUrl(),

@@ -77,45 +77,18 @@ class SecureConfig {
         const localProxyUrl = 'http://localhost:3000/api/delivery';
         const productionDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
         const testDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
-
-        const adjustTargetParam = (url, target) => {
-            if (!url || typeof url !== 'string') {
-                return url;
-            }
-            const absoluteUrlPattern = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
-            const isAbsolute = absoluteUrlPattern.test(url);
-            const base = isAbsolute ? new URL(url) : new URL(url, 'http://placeholder.local');
-
-            if (target === 'test') {
-                base.searchParams.set('target', 'test');
-            } else {
-                base.searchParams.delete('target');
-            }
-
-            if (isAbsolute) {
-                return base.toString();
-            }
-            const serialized = base.pathname + (base.search ? base.search : '');
-            return serialized || '/';
-        };
-
-        let baseUrl = productionProxyUrl;
-        let requestedWebhook = 'auto';
+ main
 
         if (typeof window !== 'undefined') {
             const hostname = window.location?.hostname ?? '';
             const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
             if (isLocalhost) {
-                baseUrl = localProxyUrl;
+ main
             }
 
             try {
                 const params = new URLSearchParams(window.location?.search ?? '');
-                const requested = params.get('webhook');
-                if (requested) {
-                    const normalized = requested.toLowerCase();
-                    if (normalized === 'test' || normalized === 'production') {
-                        requestedWebhook = normalized;
+ main
                     }
                 }
             } catch (error) {
