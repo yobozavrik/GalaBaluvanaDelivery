@@ -73,21 +73,86 @@ class SecureConfig {
             }
         }
 
-        const productionUrl = '/api/delivery';
-        const localUrl = 'http://localhost:3000/api/delivery';
+        const productionProxyUrl = '/api/delivery';
+        const localProxyUrl = 'http://localhost:3000/api/delivery';
+        const productionDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+        const testDirectUrl = 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
 
-        let defaultUrl = productionUrl;
+        const adjustTargetParam = (url, target) => {
+            if (!url || typeof url !== 'string') {
+                return url;
+            }
+            const absoluteUrlPattern = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+            const isAbsolute = absoluteUrlPattern.test(url);
+            const base = isAbsolute ? new URL(url) : new URL(url, 'http://placeholder.local');
+
+            if (target === 'test') {
+                base.searchParams.set('target', 'test');
+            } else {
+                base.searchParams.delete('target');
+            }
+
+            if (isAbsolute) {
+                return base.toString();
+            }
+            const serialized = base.pathname + (base.search ? base.search : '');
+            return serialized || '/';
+        };
+
+        let baseUrl = productionProxyUrl;
+        let requestedWebhook = 'auto';
 
         if (typeof window !== 'undefined') {
             const hostname = window.location?.hostname ?? '';
             const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
             if (isLocalhost) {
-                defaultUrl = localUrl;
+                baseUrl = localProxyUrl;
+            }
+
+            try {
+                const params = new URLSearchParams(window.location?.search ?? '');
+                const requested = params.get('webhook');
+                if (requested) {
+                    const normalized = requested.toLowerCase();
+                    if (normalized === 'test' || normalized === 'production') {
+                        requestedWebhook = normalized;
+                    }
+                }
+            } catch (error) {
+                console.warn('Не удалось прочитать параметры URL для выбора webhook.', error);
             }
         }
 
-        console.log('🔗 Используется webhook URL:', defaultUrl);
-        return defaultUrl;
+        const isProxyUrl = typeof baseUrl === 'string' && baseUrl.includes('/api/delivery');
+
+        if (requestedWebhook === 'test') {
+            if (isProxyUrl) {
+                const proxyTestUrl = adjustTargetParam(baseUrl, 'test');
+                console.log('🔁 Переключение на тестовый webhook через проксі (?webhook=test).');
+                return proxyTestUrl;
+            }
+            console.log('🔁 Переключение на тестовый webhook (?webhook=test).');
+            return testDirectUrl;
+        }
+
+        if (requestedWebhook === 'production') {
+            if (isProxyUrl) {
+                const proxyProductionUrl = adjustTargetParam(baseUrl, null);
+                console.log('🔁 Переключение на продукционный webhook (?webhook=production).');
+                return proxyProductionUrl;
+            }
+            console.log('🔁 Переключение на продукционный webhook (?webhook=production).');
+            return productionDirectUrl;
+        }
+
+        if (isProxyUrl) {
+            const normalizedProxyUrl = adjustTargetParam(baseUrl, null);
+            console.log('🔗 Используется webhook URL через проксі:', normalizedProxyUrl);
+            return normalizedProxyUrl;
+        }
+
+        console.log('🔗 Используется прямой webhook URL:', productionDirectUrl);
+        return productionDirectUrl;
     }
 
     getSecureApiKey() {
@@ -311,52 +376,99 @@ class SecureApiClient {
         };
         console.log('📦 Payload:', payloadForLog);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        try {
-            const primaryUrl = this.config.N8N_WEBHOOK_URL;
-            const backupUrl = primaryUrl.replace('/webhook/delivery', '/webhook-test/delivery');
-            const tryUrls = [primaryUrl, backupUrl];
+        const buildAttemptUrls = (baseUrl) => {
+            const attempts = [];
+            const seen = new Set();
+            const add = (value) => {
+                if (value && typeof value === 'string' && !seen.has(value)) {
+                    seen.add(value);
+                    attempts.push(value);
+                }
+            };
 
-            let response;
-            let lastError;
-            for (const url of tryUrls) {
-                try {
-                    response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                        mode: 'cors',
-                        credentials: 'omit',
-                        signal: controller.signal
-                    });
-                    break;
-                } catch (err) {
-                    lastError = err;
+            if (!baseUrl) {
+                return attempts;
+            }
+
+            add(baseUrl);
+
+            try {
+                const absoluteUrlPattern = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+                const isAbsolute = absoluteUrlPattern.test(baseUrl);
+                const origin = (typeof window !== 'undefined' && window.location?.origin) || 'http://placeholder.local';
+                const parsedUrl = isAbsolute ? new URL(baseUrl) : new URL(baseUrl, origin);
+                const pathname = parsedUrl.pathname || '';
+                const serialize = (urlObj) => {
+                    if (isAbsolute) {
+                        return urlObj.toString();
+                    }
+                    return urlObj.pathname + (urlObj.search ? urlObj.search : '');
+                };
+
+                if (pathname.endsWith('/api/delivery')) {
+                    const productionUrl = new URL(parsedUrl.toString());
+                    productionUrl.searchParams.delete('target');
+                    add(serialize(productionUrl));
+
+                    const testUrl = new URL(parsedUrl.toString());
+                    testUrl.searchParams.set('target', 'test');
+                    add(serialize(testUrl));
+                } else if (pathname.includes('/webhook-test/')) {
+                    const productionUrl = new URL(parsedUrl.toString());
+                    productionUrl.pathname = productionUrl.pathname.replace('/webhook-test/', '/webhook/');
+                    add(serialize(productionUrl));
+                } else if (pathname.includes('/webhook/')) {
+                    const testUrl = new URL(parsedUrl.toString());
+                    testUrl.pathname = testUrl.pathname.replace('/webhook/', '/webhook-test/');
+                    add(serialize(testUrl));
+                }
+            } catch (fallbackError) {
+                console.warn('Не удалось построить список fallback webhook URL.', fallbackError);
+            }
+
+            return attempts;
+        };
+
+        const attemptUrls = buildAttemptUrls(this.config.N8N_WEBHOOK_URL);
+        let lastError;
+
+        for (const url of attemptUrls) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    mode: 'cors',
+                    credentials: 'omit',
+                    signal: controller.signal
+                });
+
+                const isOpaque = response.type === 'opaque';
+                const text = isOpaque ? '' : await response.text();
+
+                if (isOpaque) {
+                    console.warn('⚠️ Ответ скрыт из-за политики CORS (opaque response). Считаем запрос успешным.');
+                    return response;
+                }
+
+                if (!response.ok) {
+                    lastError = new Error(`n8n responded ${response.status}: ${text}`);
+                    console.error(`❌ Ошибка ответа n8n (${response.status}) для ${url}:`, text);
                     continue;
                 }
-            }
-            if (!response) {
-                throw lastError || new Error('No response from webhook');
-            }
-            const text = await response.text();
 
-            if (response.type === 'opaque') {
-                console.warn('⚠️ Ответ скрыт из-за политики CORS (opaque response). Считаем запрос успешным.');
-                return response;
+                return text;
+            } catch (error) {
+                lastError = error;
+                console.error(`❌ Ошибка запроса к n8n (${url}):`, error?.message || error);
+            } finally {
+                clearTimeout(timeoutId);
             }
-
-            if (!response.ok) {
-                throw new Error(`n8n responded ${response.status}: ${text}`);
-            }
-
-            return text;
-        } catch (error) {
-            console.error('❌ Ошибка запроса к n8n:', error?.message || error);
-            throw error;
-        } finally {
-            clearTimeout(timeoutId);
         }
+
+        throw lastError || new Error('No response from webhook');
     }
     async getAiSummary(historyItems) {
         if (!this.config.GEMINI_API_URL) {

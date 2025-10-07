@@ -263,8 +263,60 @@ const appState=new AppState();
 
 /* ---------- CONFIG ---------- */
 const getSecureWebhookUrl=()=>{
-  // можешь переопределить window.__SECURE_WEBHOOK_URL__ при необходимости
-  return (typeof window!=='undefined' && window.__SECURE_WEBHOOK_URL__) || 'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+  const productionProxyUrl='/api/delivery';
+  const localProxyUrl='http://localhost:3000/api/delivery';
+  const productionDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook/delivery';
+  const testDirectUrl='https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
+
+  const adjustTargetParam=(url,target)=>{
+    if(!url) return url;
+    const absolutePattern=/^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+    const isAbsolute=absolutePattern.test(url);
+    const parsed=isAbsolute?new URL(url):new URL(url,'http://placeholder.local');
+    if(target==='test') parsed.searchParams.set('target','test');
+    else parsed.searchParams.delete('target');
+    if(isAbsolute) return parsed.toString();
+    const serialized=parsed.pathname+(parsed.search?parsed.search:'');
+    return serialized||'/';
+  };
+
+  if(typeof window!=='undefined'){
+    if(window.__SECURE_WEBHOOK_URL__) return window.__SECURE_WEBHOOK_URL__;
+
+    let baseUrl=productionProxyUrl;
+    let requested='auto';
+
+    try{
+      const params=new URLSearchParams(window.location?.search ?? '');
+      const requestedWebhook=params.get('webhook');
+      if(requestedWebhook){
+        const normalized=requestedWebhook.toLowerCase();
+        if(normalized==='test' || normalized==='production') requested=normalized;
+      }
+    }catch(error){
+      console.warn('Не удалось прочитать параметры URL для выбора webhook.',error);
+    }
+
+    const hostname=window.location?.hostname ?? '';
+    if(hostname==='localhost' || hostname==='127.0.0.1') baseUrl=localProxyUrl;
+
+    const isProxy=typeof baseUrl==='string' && baseUrl.includes('/api/delivery');
+
+    if(requested==='test'){
+      if(isProxy) return adjustTargetParam(baseUrl,'test');
+      return testDirectUrl;
+    }
+
+    if(requested==='production'){
+      if(isProxy) return adjustTargetParam(baseUrl,null);
+      return productionDirectUrl;
+    }
+
+    if(isProxy) return adjustTargetParam(baseUrl,null);
+    return productionDirectUrl;
+  }
+
+  return productionProxyUrl;
 };
 const appConfig={
   N8N_WEBHOOK_URL:getSecureWebhookUrl(),
@@ -276,6 +328,46 @@ const appConfig={
   marketLocations:['Калинівський ринок','Зелений ринок','Метро','Інше'],
   unloadingLocations:['Героїв Майдану','Ентузіастів','Бульвар','Гравітон','Садова','Флоріда','Ентузіастів 2 поверх','Піцерія','Руська','Інше'],
   products:['Картопля','Цибуля','Капуста','Морква','Буряк','Гриби','Помідори','Банан','Часник','Перець','Кабачки','Баклажан','Лимон']
+};
+
+const buildWebhookAttemptUrls=(baseUrl)=>{
+  const attempts=[];
+  const seen=new Set();
+  const add=(value)=>{ if(value && typeof value==='string' && !seen.has(value)){ seen.add(value); attempts.push(value); } };
+
+  if(!baseUrl) return attempts;
+  add(baseUrl);
+
+  try{
+    const absolutePattern=/^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+    const isAbsolute=absolutePattern.test(baseUrl);
+    const origin=(typeof window!=='undefined' && window.location?.origin) || 'http://placeholder.local';
+    const parsed=isAbsolute?new URL(baseUrl):new URL(baseUrl,origin);
+    const pathname=parsed.pathname || '';
+    const serialize=(urlObj)=> isAbsolute ? urlObj.toString() : (urlObj.pathname + (urlObj.search?urlObj.search:''));
+
+    if(pathname.endsWith('/api/delivery')){
+      const productionUrl=new URL(parsed.toString());
+      productionUrl.searchParams.delete('target');
+      add(serialize(productionUrl));
+
+      const testUrl=new URL(parsed.toString());
+      testUrl.searchParams.set('target','test');
+      add(serialize(testUrl));
+    }else if(pathname.includes('/webhook-test/')){
+      const productionUrl=new URL(parsed.toString());
+      productionUrl.pathname=productionUrl.pathname.replace('/webhook-test/','/webhook/');
+      add(serialize(productionUrl));
+    }else if(pathname.includes('/webhook/')){
+      const testUrl=new URL(parsed.toString());
+      testUrl.pathname=testUrl.pathname.replace('/webhook/','/webhook-test/');
+      add(serialize(testUrl));
+    }
+  }catch(error){
+    console.warn('Не удалось построить список fallback webhook URL.', error);
+  }
+
+  return attempts;
 };
 
 /* ---------- STORAGE / TOAST / THEME ---------- */
@@ -542,7 +634,13 @@ async function sendAllToServer(listType, gapMs=150, perRequestTimeoutMs=12000){
   }
 
   console.log(`📤 Отправка ${itemsToSend.length} записей...`);
-  const apiUrl=appConfig.N8N_WEBHOOK_URL; // прямой n8n
+  const attemptUrls=buildWebhookAttemptUrls(appConfig.N8N_WEBHOOK_URL);
+  if(attemptUrls.length===0){
+    console.error('❌ Немає валідних webhook URL для відправки.');
+    ToastManager.show('Не налаштовано webhook для відправки','error');
+    button.disabled=false; buttonIcon.style.display='inline-block'; buttonSpinner.style.display='none';
+    return;
+  }
 
   const successfulIds=new Set();
 
@@ -575,18 +673,35 @@ async function sendAllToServer(listType, gapMs=150, perRequestTimeoutMs=12000){
         }
       }
 
-      const controller=new AbortController();
-      const timeoutId=setTimeout(()=>controller.abort(), perRequestTimeoutMs);
+      let delivered=false;
+      let lastError=null;
 
-      try{
-        const res=await fetch(apiUrl,{ method:'POST', body:formData, signal:controller.signal, mode:'cors' });
-        const text=await res.text();
-        if(!res.ok){ console.error(`❌ HTTP ${res.status}`, text); throw new Error(`HTTP ${res.status}`); }
-        console.log('✅ ok:', item.productName);
-        successfulIds.add(item.id);
-      }catch(err){
-        console.error('❌ fetch error:', err?.message||err);
-      }finally{ clearTimeout(timeoutId); }
+      for(const url of attemptUrls){
+        const attemptController=new AbortController();
+        const attemptTimeout=setTimeout(()=>attemptController.abort(), perRequestTimeoutMs);
+        try{
+          const res=await fetch(url,{ method:'POST', body:formData, signal:attemptController.signal, mode:'cors' });
+          const text=await res.text();
+          if(!res.ok){
+            lastError=new Error(`HTTP ${res.status}`);
+            console.error(`❌ HTTP ${res.status} (${url})`, text);
+            continue;
+          }
+          console.log(`✅ ok (${url}):`, item.productName);
+          successfulIds.add(item.id);
+          delivered=true;
+          break;
+        }catch(err){
+          lastError=err;
+          console.error(`❌ fetch error (${url}):`, err?.message||err);
+        }finally{
+          clearTimeout(attemptTimeout);
+        }
+      }
+
+      if(!delivered && lastError){
+        console.error('❌ Повторні спроби вичерпані для запису:', item.productName, lastError?.message||lastError);
+      }
     }catch(e){ console.error('❌ unexpected:', e?.message||e); }
 
     // пауза между отправками
