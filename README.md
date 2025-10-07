@@ -48,6 +48,14 @@ getSecureWebhookUrl() {
 > За замовчуванням застосунок звертається до внутрішнього проксі `/api/delivery`,
 > а під час локальної розробки — до `http://localhost:3000/api/delivery`. Ви можете перевизначити URL
 > через глобальну змінну `window.__SECURE_WEBHOOK_URL__` або `globalThis.SECURE_WEBHOOK_URL`.
+>
+> Для тестування доступний webhook `https://n8n.dmytrotovstytskyi.online/webhook-test/delivery`. Додайте до URL сторінки
+> параметр `?webhook=test`, і застосунок автоматично звернеться до проксі з параметром `target=test`
+> (`/api/delivery?target=test`), що дозволяє уникнути CORS-помилок. Щоб повернутися до бойової версії,
+> приберіть параметр або використайте `?webhook=production`.
+>
+> Серверна функція-проксі (`/api/delivery`) також приймає `?target=test|production` і підтримує змінну
+> середовища `N8N_TEST_WEBHOOK_URL` для налаштування альтернативної адреси без зміни клієнтського коду.
 
 ### 2. HTTPS (обов'язково):
 
