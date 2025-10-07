@@ -48,16 +48,34 @@ class InputValidator {
 // Security: Secure API configuration
 class SecureConfig {
     constructor() {
-        // Use environment variables or secure configuration
-        this.N8N_WEBHOOK_URL = this.getSecureWebhookUrl();
+        this.productionWebhookUrl = this.determineProductionWebhookUrl();
+        this.testWebhookUrl = 'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
+        this.overrideWebhookUrl = this.getOverrideWebhookUrl();
+        this.mode = this.getInitialMode();
+        this.N8N_WEBHOOK_URL = this.resolveWebhookUrl();
         this.GEMINI_API_KEY = this.getSecureApiKey();
-        this.GEMINI_API_URL = this.GEMINI_API_KEY ? 
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${this.GEMINI_API_KEY}` : 
+        this.GEMINI_API_URL = this.GEMINI_API_KEY ?
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${this.GEMINI_API_KEY}` :
             null;
+
+        console.log(`🔗 Використовується режим: ${this.isTestMode ? 'тестовий' : 'робочий'}, webhook URL:`, this.N8N_WEBHOOK_URL);
     }
 
-    getSecureWebhookUrl() {
-        // Allow overriding the webhook URL from a deploy-time configuration value
+    getInitialMode() {
+        if (typeof window === 'undefined') {
+            return 'production';
+        }
+
+        try {
+            const storedMode = localStorage.getItem('app_mode');
+            return storedMode === 'test' ? 'test' : 'production';
+        } catch (error) {
+            console.warn('Не вдалося зчитати режим із localStorage. Використовую робочий режим.', error);
+            return 'production';
+        }
+    }
+
+    getOverrideWebhookUrl() {
         const overrideUrl = (typeof window !== 'undefined' && window.__SECURE_WEBHOOK_URL__)
             || (typeof globalThis !== 'undefined' && globalThis.SECURE_WEBHOOK_URL)
             || '';
@@ -73,21 +91,57 @@ class SecureConfig {
             }
         }
 
+        return '';
+    }
+
+    determineProductionWebhookUrl() {
         const productionUrl = '/api/delivery';
         const localUrl = 'http://localhost:3000/api/delivery';
 
-        let defaultUrl = productionUrl;
+        if (typeof window === 'undefined') {
+            return productionUrl;
+        }
+
+        const hostname = window.location?.hostname ?? '';
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+        return isLocalhost ? localUrl : productionUrl;
+    }
+
+    resolveWebhookUrl() {
+        if (this.overrideWebhookUrl) {
+            return this.overrideWebhookUrl;
+        }
+
+        return this.isTestMode ? this.testWebhookUrl : this.productionWebhookUrl;
+    }
+
+    setMode(mode) {
+        const normalized = mode === 'test' ? 'test' : 'production';
+        this.mode = normalized;
 
         if (typeof window !== 'undefined') {
-            const hostname = window.location?.hostname ?? '';
-            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-            if (isLocalhost) {
-                defaultUrl = localUrl;
+            try {
+                localStorage.setItem('app_mode', normalized);
+            } catch (error) {
+                console.warn('Не вдалося зберегти вибраний режим.', error);
             }
         }
 
-        console.log('🔗 Используется webhook URL:', defaultUrl);
-        return defaultUrl;
+        this.N8N_WEBHOOK_URL = this.resolveWebhookUrl();
+        console.log(`🔁 Режим змінено на ${this.isTestMode ? 'тестовий' : 'робочий'}, webhook URL:`, this.N8N_WEBHOOK_URL);
+        return this.N8N_WEBHOOK_URL;
+    }
+
+    toggleMode() {
+        return this.setMode(this.isTestMode ? 'production' : 'test');
+    }
+
+    get isTestMode() {
+        return this.mode === 'test';
+    }
+
+    get hasCustomOverride() {
+        return Boolean(this.overrideWebhookUrl);
     }
 
     getSecureApiKey() {
@@ -304,7 +358,7 @@ class SecureApiClient {
     }
 
     async sendPurchaseData(payload) {
-        console.log('🚀 Отправка данных в n8n:', this.config.N8N_WEBHOOK_URL);
+        console.log(`🚀 Отправка даних (${this.config.isTestMode ? 'тестовий' : 'робочий'} режим) у n8n:`, this.config.N8N_WEBHOOK_URL);
         const payloadForLog = {
             ...payload,
             attachments: payload.attachments?.map(({ name, type, size }) => ({ name, type, size }))
@@ -315,8 +369,11 @@ class SecureApiClient {
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         try {
             const primaryUrl = this.config.N8N_WEBHOOK_URL;
-            const backupUrl = primaryUrl.replace('/webhook/delivery', '/webhook-test/delivery');
-            const tryUrls = [primaryUrl, backupUrl];
+            const tryUrls = [primaryUrl];
+
+            if (!this.config.isTestMode && !this.config.hasCustomOverride && this.config.testWebhookUrl && this.config.testWebhookUrl !== primaryUrl) {
+                tryUrls.push(this.config.testWebhookUrl);
+            }
 
             let response;
             let lastError;
@@ -473,6 +530,37 @@ function setupEventListeners() {
     document.getElementById('pricePerUnit').addEventListener('blur', validatePrice);
     document.getElementById('location').addEventListener('blur', validateLocation);
     document.getElementById('customLocation').addEventListener('blur', validateLocation);
+
+    const modeToggleButton = document.getElementById('modeToggle');
+    if (modeToggleButton) {
+        modeToggleButton.addEventListener('click', handleModeToggle);
+    }
+}
+
+function applyModeStateToUI() {
+    const toggleButton = document.getElementById('modeToggle');
+    const label = document.getElementById('modeToggleLabel');
+
+    if (!toggleButton || !label) {
+        return;
+    }
+
+    const isTestMode = config.isTestMode;
+    toggleButton.classList.toggle('is-test', isTestMode);
+    toggleButton.setAttribute('aria-pressed', isTestMode ? 'true' : 'false');
+    label.textContent = isTestMode ? 'Тест режим' : 'Робочий режим';
+    document.body.classList.toggle('test-mode', isTestMode);
+}
+
+function handleModeToggle() {
+    const newMode = config.isTestMode ? 'production' : 'test';
+    config.setMode(newMode);
+    applyModeStateToUI();
+
+    const message = config.isTestMode
+        ? 'Тестовий режим активовано. Всі заявки підуть на тестовий вебхук.'
+        : 'Повернено робочий режим. Дані надсилатимуться у бойовий облік.';
+    toastManager.show(message, 'info');
 }
 
 function validateProductName() {
@@ -1013,9 +1101,10 @@ document.addEventListener('DOMContentLoaded', () => {
         appState.updateUI();
         updateHistoryDisplay();
     }, 500);
-    
+
     // Setup event listeners
     setupEventListeners();
+    applyModeStateToUI();
     populateDatalist();
     populateUnitSelect();
 });

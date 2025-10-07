@@ -13,13 +13,19 @@
 <body>
     <header class="app-header">
         <div class="header-content">
-            <button class="back-button" id="backButton" style="display: none;">
+            <button class="back-button" id="backButton" style="display: none;" type="button">
                 <i data-lucide="arrow-left"></i>
             </button>
             <h1 class="header-title" id="headerTitle">Облік закупівель</h1>
-            <button class="theme-toggle" id="themeToggle">
-                <i data-lucide="moon" class="theme-icon"></i>
-            </button>
+            <div class="header-actions">
+                <button class="mode-toggle" id="modeToggle" type="button" aria-pressed="false">
+                    <span class="mode-indicator"></span>
+                    <span id="modeToggleLabel">Робочий режим</span>
+                </button>
+                <button class="theme-toggle" id="themeToggle" type="button">
+                    <i data-lucide="moon" class="theme-icon"></i>
+                </button>
+            </div>
         </div>
     </header>
 
