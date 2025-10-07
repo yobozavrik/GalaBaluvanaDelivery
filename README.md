@@ -50,8 +50,8 @@ getSecureWebhookUrl() {
 > через глобальну змінну `window.__SECURE_WEBHOOK_URL__` або `globalThis.SECURE_WEBHOOK_URL`.
 >
 > Для тестування доступний webhook `https://n8n.dmytrotovstytskyi.online/webhook-test/delivery`. Додайте до URL сторінки
-> параметр `?webhook=test`, щоб тимчасово переключитися на тестову точку, або `?webhook=production`, щоб примусово
-> використовувати бойовий webhook незалежно від проксі.
+
+main
 
 ### 2. HTTPS (обов'язково):
 
