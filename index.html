@@ -220,7 +220,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // ИСПРАВЛЕННАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ОТПРАВКИ ФОТО
-        
+
         class AppState {
             constructor() {
                 this.screen = 'main';
@@ -272,7 +272,10 @@
             }
         }
         const appState = new AppState();
-        
+
+        const MIN_REQUEST_DELAY_MS = 500;
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
         const getSecureWebhookUrl = () => {
             const productionUrl = '/api/delivery';
             const localUrl = 'http://localhost:3000/api/delivery';
@@ -656,6 +659,67 @@
             return `${safeName}-${timestamp}.${extension}`;
         }
 
+        async function transmitItemToWebhook(item, index, total, itemsById) {
+            console.log(`📦 [${index + 1}/${total}] Отправка: ${item.productName}`);
+
+            const eventDate = new Date(item.timestamp);
+            const isoDate = eventDate.toISOString();
+            const [datePart, timePartWithMs] = isoDate.split('T');
+            const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
+
+            const payload = {
+                id: item.id,
+                type: item.type,
+                timestamp: item.timestamp,
+                date: datePart,
+                time: timePart,
+                productName: item.productName,
+                quantity: item.quantity,
+                unit: item.unit,
+                pricePerUnit: item.pricePerUnit,
+                totalAmount: item.totalAmount,
+                location: item.location
+            };
+
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(payload));
+
+            const storedItem = itemsById.get(item.id) || item;
+            const photoBase64 = storedItem.photoBase64;
+            if (photoBase64) {
+                const blob = dataURLToBlob(photoBase64);
+                if (blob) {
+                    const filename = buildPhotoFilename(storedItem, blob.type);
+                    formData.append('file', blob, filename);
+                    console.log(`📸 Фото додано як файл '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
+                }
+            }
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+            try {
+                const apiUrl = '/api/delivery';
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal,
+                    mode: 'cors'
+                });
+
+                const responseText = await response.text();
+                if (!response.ok) {
+                    console.error(`❌ HTTP ${response.status}:`, responseText);
+                    throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 100)}`);
+                }
+
+                console.log(`✅ Успішно відправлено: ${item.productName}`);
+                return item.id;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
         async function sendAllToServer(listType) {
             const buttonId = listType === 'purchasesList' ? 'sendPurchasesButton' : 'sendUnloadingsButton';
             const button = document.getElementById(buttonId);
@@ -683,86 +747,29 @@
 
             console.log(`📤 Отправка ${itemsToSend.length} записей...`);
 
-            const promises = itemsToSend.map(async (item, index) => {
+            const successfulIds = new Set();
+
+            for (let index = 0; index < itemsToSend.length; index++) {
+                const item = itemsToSend[index];
                 try {
-                    console.log(`📦 [${index + 1}/${itemsToSend.length}] Отправка: ${item.productName}`);
-                    
-                    // Подготовка основных данных
-                    const eventDate = new Date(item.timestamp);
-                    const isoDate = eventDate.toISOString();
-                    const [datePart, timePartWithMs] = isoDate.split('T');
-                    const timePart = timePartWithMs ? timePartWithMs.split('.')[0] : '';
-                    
-                    // ПРОСТОЙ ФОРМАТ - прямо как в старом app.js
-                    const payload = {
-                        id: item.id,
-                        type: item.type,
-                        timestamp: item.timestamp,
-                        date: datePart,
-                        time: timePart,
-                        productName: item.productName,
-                        quantity: item.quantity,
-                        unit: item.unit,
-                        pricePerUnit: item.pricePerUnit,
-                        totalAmount: item.totalAmount,
-                        location: item.location
-                    };
-
-                    const formData = new FormData();
-                    formData.append('data', JSON.stringify(payload));
-
-                    const storedItem = itemsById.get(item.id) || item;
-                    const photoBase64 = storedItem.photoBase64;
-                    if (photoBase64) {
-                        const blob = dataURLToBlob(photoBase64);
-                        if (blob) {
-                            const filename = buildPhotoFilename(storedItem, blob.type);
-                            formData.append('file', blob, filename);
-                            console.log(`📸 Фото додано як файл '${filename}' (${(blob.size / 1024).toFixed(2)} KB)`);
-                        }
+                    const resultId = await transmitItemToWebhook(item, index, itemsToSend.length, itemsById);
+                    if (resultId) {
+                        successfulIds.add(resultId);
                     }
-
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000);
-                    
-                    try {
-                        const apiUrl = '/api/delivery';
-
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            body: formData,
-                            signal: controller.signal,
-                            mode: 'cors'
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        const responseText = await response.text();
-                        
-                        if (!response.ok) {
-                            console.error(`❌ HTTP ${response.status}:`, responseText);
-                            throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 100)}`);
-                        }
-                        
-                        console.log(`✅ Успешно отправлено: ${item.productName}`);
-                        return item.id;
-                        
-                    } catch (fetchError) {
-                        clearTimeout(timeoutId);
-                        throw fetchError;
-                    }
-                    
                 } catch (error) {
-                    console.error(`❌ Ошибка отправки [${item.productName}]:`, error.message);
-                    return null;
+                    const message = error?.message || error;
+                    console.error(`❌ Ошибка отправки [${item.productName}]:`, message);
                 }
-            });
 
-            const results = await Promise.all(promises);
-            const successfulIds = new Set(results.filter(id => id !== null));
+                if (index < itemsToSend.length - 1) {
+                    console.log(`⏳ Пауза ${MIN_REQUEST_DELAY_MS}мс перед наступною заявкою`);
+                    await delay(MIN_REQUEST_DELAY_MS);
+                }
+            }
+
             const failedCount = itemsToSend.length - successfulIds.size;
 
-            console.log(`📊 Результат: ${successfulIds.size} успешно, ${failedCount} ошибок`);
+            console.log(`📊 Результат: ${successfulIds.size} успішно, ${failedCount} помилок`);
 
             // Удаляем только успешно отправленные
             const remainingItems = allItems.filter(item => !successfulIds.has(item.id));
