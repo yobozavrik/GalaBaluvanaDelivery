@@ -1,9 +1,6 @@
-const PRODUCTION_WEBHOOK_URL =
+const N8N_URL =
   (process?.env?.N8N_WEBHOOK_URL as string) ||
   'https://n8n.dmytrotovstytskyi.online/webhook/delivery';
-const TEST_WEBHOOK_URL =
-  (process?.env?.N8N_TEST_WEBHOOK_URL as string) ||
-  'https://n8n.dmytrotovstytskyi.online/webhook-test/delivery';
 
 export const config = {
   api: {
@@ -93,12 +90,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const targetParamRaw = (req.query?.target ?? '') as string | string[];
-    const targetParam = Array.isArray(targetParamRaw) ? targetParamRaw[0] : targetParamRaw;
-    const normalizedTarget = typeof targetParam === 'string' ? targetParam.toLowerCase() : '';
-    const forwardUrl = normalizedTarget === 'test' ? TEST_WEBHOOK_URL : PRODUCTION_WEBHOOK_URL;
-
-    const response = await fetch(forwardUrl, {
+    const response = await fetch(N8N_URL, {
       method: 'POST',
       headers: forwardHeaders,
       body: forwardBody,
