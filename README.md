@@ -48,6 +48,10 @@ getSecureWebhookUrl() {
 > За замовчуванням застосунок звертається до внутрішнього проксі `/api/delivery`,
 > а під час локальної розробки — до `http://localhost:3000/api/delivery`. Ви можете перевизначити URL
 > через глобальну змінну `window.__SECURE_WEBHOOK_URL__` або `globalThis.SECURE_WEBHOOK_URL`.
+>
+> Для тестування доступний webhook `https://n8n.dmytrotovstytskyi.online/webhook-test/delivery`. Додайте до URL сторінки
+
+main
 
 ### 2. HTTPS (обов'язково):
 
