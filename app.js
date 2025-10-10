@@ -174,7 +174,15 @@ class SecureConfig {
     }
 
     get products() {
-        return ['Картопля', 'Цибуля', 'Капуста', 'Морква', 'Буряк', 'Гриби', 'Помідори', 'Банан', 'Часник', 'Перець', 'Кабачки', 'Баклажан', 'Лимон'];
+        return [
+            'Картопля', 'Цибуля', 'Капуста', 'Морква', 'Буряк', 'Гриби', 'Помідори', 'Банан', 'Часник', 'Перець', 'Кабачки',
+            'Баклажан', 'Лимон', 'Майонез євро 0,520 грам', 'Майонез щедро провансаль 0,550 грам',
+            'Майонез столичний 0,550 грам', 'Гарам', 'Сухарі', 'Крекер з цибулею 0,180 грам',
+            'Гірчиця американська 0,130 грам', 'Сирки ферма', 'Згущене молоко', 'Мак', 'Томатна паста', 'Кава', 'Вершки',
+            'Висівки', 'Мед', 'Дріжджі сухі 0,042 грам', 'Дріжджі 0,1 грам', 'Хмелі сунелі', 'Оливки', 'Кукурудза',
+            'Печево топлене молоко', 'Печево Марія', 'Горгонзола сир', 'Лавровий лист', 'Суха гірчиця', 'Паприка копчена',
+            'Лимонний сік'
+        ];
     }
 }
 
@@ -661,17 +669,17 @@ function setupPurchaseForm() {
     const saveButtonText = document.getElementById('saveButtonText');
     
     let locations = config.marketLocations;
-    
+
     if (appState.isUnloading) {
-        priceGroup.style.display = 'none'; 
-        totalGroup.style.display = 'none';
-        locationLabel.textContent = 'Магазин (розвантаження)'; 
+        priceGroup.style.display = 'block';
+        totalGroup.style.display = 'block';
+        locationLabel.textContent = 'Магазин (відвантаження)';
         saveButtonText.textContent = 'Відправити розвантаження';
         locations = config.unloadingLocations;
     } else if (appState.isDelivery) {
-        priceGroup.style.display = 'none'; 
+        priceGroup.style.display = 'none';
         totalGroup.style.display = 'none';
-        locationLabel.textContent = 'Магазин (доставка)'; 
+        locationLabel.textContent = 'Магазин (доставка)';
         saveButtonText.textContent = 'Відправити доставку';
         locations = config.deliveryLocations;
     } else {
@@ -736,12 +744,15 @@ function handleLocationChange() {
 }
 
 function updateTotalAmount() {
-    if (appState.isUnloading || appState.isDelivery) return;
-    
+    if (appState.isDelivery) {
+        document.getElementById('totalAmount').textContent = '0.00 ₴';
+        return;
+    }
+
     const qty = parseFloat(document.getElementById('quantity').value) || 0;
     const price = parseFloat(document.getElementById('pricePerUnit').value) || 0;
     const total = (qty * price).toFixed(2);
-    
+
     document.getElementById('totalAmount').textContent = `${total} ₴`;
 }
 
@@ -845,7 +856,7 @@ async function buildWebhookPayload(itemData, file) {
             location: itemData.location
         };
 
-        if (itemData.type === 'Закупка') {
+        if (itemData.type === 'Закупка' || itemData.type === 'Розвантаження') {
             section.pricePerUnit = itemData.pricePerUnit;
             section.totalAmount = itemData.totalAmount;
         }
@@ -862,7 +873,7 @@ async function buildWebhookPayload(itemData, file) {
         flatFields[`${prefix}_unit`] = toStringValue(itemData.unit);
         flatFields[`${prefix}_location`] = toStringValue(itemData.location);
 
-        if (itemData.type === 'Закупка') {
+        if (itemData.type === 'Закупка' || itemData.type === 'Розвантаження') {
             flatFields[`${prefix}_price_per_unit`] = toStringValue(itemData.pricePerUnit);
             flatFields[`${prefix}_total_amount`] = toStringValue(itemData.totalAmount);
         }
@@ -887,10 +898,12 @@ async function handleFormSubmit(event) {
 
     console.log('📝 Начало отправки формы');
     
+    const requiresPrice = !appState.isDelivery;
+
     // Validate all fields
     const isProductNameValid = validateProductName();
     const isQuantityValid = validateQuantity();
-    const isPriceValid = appState.isUnloading || appState.isDelivery || validatePrice();
+    const isPriceValid = requiresPrice ? validatePrice() : true;
     const isLocationValid = validateLocation();
     
     if (!isProductNameValid || !isQuantityValid || !isPriceValid || !isLocationValid) {
@@ -913,12 +926,12 @@ async function handleFormSubmit(event) {
         }
 
         const unit = document.getElementById('unit').value;
-        const pricePerUnitInput = parseFloat(document.getElementById('pricePerUnit').value) || 0;
-        const pricePerUnit = appState.isUnloading || appState.isDelivery ? 0 : pricePerUnitInput;
-        const computedTotal = quantity * pricePerUnit;
-        const totalAmount = appState.isUnloading || appState.isDelivery
-            ? 0
-            : Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
+        const pricePerUnitInput = parseFloat(document.getElementById('pricePerUnit').value);
+        const pricePerUnit = requiresPrice && !isNaN(pricePerUnitInput) ? pricePerUnitInput : 0;
+        const computedTotal = requiresPrice ? quantity * pricePerUnit : 0;
+        const totalAmount = requiresPrice && Number.isFinite(computedTotal)
+            ? Number(computedTotal.toFixed(2))
+            : 0;
 
         const itemData = {
             id: crypto.randomUUID(),
