@@ -592,11 +592,24 @@ function validateQuantity() {
 }
 
 function validatePrice() {
-    const value = document.getElementById('pricePerUnit').value;
+    const value = document.getElementById('pricePerUnit').value.trim();
+    const isOptional = appState.isUnloading || appState.isDelivery;
+
+    if (value === '') {
+        if (isOptional) {
+            clearFieldError('pricePerUnit');
+            return true;
+        }
+
+        showFieldError('pricePerUnit', 'Ціна повинна бути від 0 до 100000');
+        return false;
+    }
+
     if (!InputValidator.validatePrice(value)) {
         showFieldError('pricePerUnit', 'Ціна повинна бути від 0 до 100000');
         return false;
     }
+
     clearFieldError('pricePerUnit');
     return true;
 }
@@ -898,12 +911,14 @@ async function handleFormSubmit(event) {
 
     console.log('📝 Начало отправки формы');
     
-    const requiresPrice = !appState.isDelivery;
+    const priceInputValue = document.getElementById('pricePerUnit').value.trim();
+    const requiresPrice = !appState.isDelivery && !appState.isUnloading;
+    const shouldValidatePrice = requiresPrice || priceInputValue !== '';
 
     // Validate all fields
     const isProductNameValid = validateProductName();
     const isQuantityValid = validateQuantity();
-    const isPriceValid = requiresPrice ? validatePrice() : true;
+    const isPriceValid = shouldValidatePrice ? validatePrice() : true;
     const isLocationValid = validateLocation();
     
     if (!isProductNameValid || !isQuantityValid || !isPriceValid || !isLocationValid) {
@@ -926,10 +941,12 @@ async function handleFormSubmit(event) {
         }
 
         const unit = document.getElementById('unit').value;
-        const pricePerUnitInput = parseFloat(document.getElementById('pricePerUnit').value);
-        const pricePerUnit = requiresPrice && !isNaN(pricePerUnitInput) ? pricePerUnitInput : 0;
-        const computedTotal = requiresPrice ? quantity * pricePerUnit : 0;
-        const totalAmount = requiresPrice && Number.isFinite(computedTotal)
+        const parsedPricePerUnit = priceInputValue !== '' ? parseFloat(priceInputValue) : NaN;
+        const hasValidPrice = priceInputValue !== '' && !isNaN(parsedPricePerUnit) && parsedPricePerUnit >= 0;
+        const pricePerUnit = hasValidPrice ? parsedPricePerUnit : 0;
+        const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
+        const computedTotal = safeQuantity * pricePerUnit;
+        const totalAmount = Number.isFinite(computedTotal)
             ? Number(computedTotal.toFixed(2))
             : 0;
 
