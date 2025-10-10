@@ -495,26 +495,31 @@
                 if(item) currentType = item.type;
             }
 
-            const isUnloadingOrDelivery = (!isEditing && (appState.isUnloading || appState.isDelivery)) || (isEditing && (currentType === 'Відвантаження' || currentType === 'Доставка'));
+            const isUnloadingState = (!isEditing && appState.isUnloading) || (isEditing && currentType === 'Відвантаження');
+            const isDeliveryState = (!isEditing && appState.isDelivery) || (isEditing && currentType === 'Доставка');
 
-            if (isUnloadingOrDelivery) {
+            if (isDeliveryState) {
                 priceGroup.style.display = 'none';
                 totalGroup.style.display = 'none';
-                locationLabel.textContent = 'Магазин (відвантаження/доставка)';
+                locationLabel.textContent = 'Магазин (доставка)';
                 locations = appConfig.unloadingLocations;
             } else {
                 priceGroup.style.display = 'block';
                 totalGroup.style.display = 'block';
-                locationLabel.textContent = 'Локація закупки';
-                locations = appConfig.marketLocations;
+                locationLabel.textContent = isUnloadingState ? 'Магазин (відвантаження)' : 'Локація закупки';
+                locations = isUnloadingState ? appConfig.unloadingLocations : appConfig.marketLocations;
             }
-            
+
             if (isEditing) {
                 formTitle.textContent = 'Редагувати запис';
                 formSubtitle.textContent = 'Змініть дані та збережіть';
                 saveButtonText.textContent = 'Оновити запис';
-            } else if (isUnloadingOrDelivery) {
+            } else if (isUnloadingState) {
                 formTitle.textContent = 'Нове відвантаження';
+                formSubtitle.textContent = 'Вкажіть дані для переміщення';
+                saveButtonText.textContent = 'Зберегти локально';
+            } else if (isDeliveryState) {
+                formTitle.textContent = 'Нова доставка';
                 formSubtitle.textContent = 'Вкажіть дані для переміщення';
                 saveButtonText.textContent = 'Зберегти локально';
             } else {
@@ -557,7 +562,10 @@
         }
 
         function updateTotalAmount() {
-            if(appState.isUnloading || appState.isDelivery) return;
+            if(appState.isDelivery) {
+                document.getElementById('totalAmount').textContent = '0.00 ₴';
+                return;
+            }
             const qty = parseFloat(document.getElementById('quantity').value) || 0;
             const price = parseFloat(document.getElementById('pricePerUnit').value) || 0;
             document.getElementById('totalAmount').textContent = (qty * price).toFixed(2) + ' ₴';
@@ -590,8 +598,8 @@
                 if (appState.isUnloading) type = 'Відвантаження';
                 if (appState.isDelivery) type = 'Доставка';
             } else {
-                 const item = StorageManager.getHistoryItems().find(i => i.id === appState.editingItemId);
-                 if (item) type = item.type;
+                const item = StorageManager.getHistoryItems().find(i => i.id === appState.editingItemId);
+                if (item) type = item.type;
             }
 
             const productName = document.getElementById('productName').value.trim();
@@ -601,13 +609,24 @@
                 location = document.getElementById('customLocation').value.trim();
             }
 
+            const rawPricePerUnit = parseFloat(document.getElementById('pricePerUnit').value);
+            const requiresPrice = type === 'Закупка' || type === 'Відвантаження';
+            if (requiresPrice && (isNaN(rawPricePerUnit) || rawPricePerUnit < 0)) {
+                ToastManager.show('Вкажіть коректну ціну за одиницю', 'error');
+                return;
+            }
+
+            const pricePerUnit = requiresPrice ? rawPricePerUnit : 0;
+            const computedTotal = requiresPrice ? quantity * pricePerUnit : 0;
+            const totalAmount = requiresPrice && Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
+
             const itemData = {
                 id: isEditing ? appState.editingItemId : crypto.randomUUID(),
                 productName,
                 quantity,
                 unit: document.getElementById('unit').value,
-                pricePerUnit: (type === 'Закупка') ? parseFloat(document.getElementById('pricePerUnit').value) || 0 : 0,
-                totalAmount: (type === 'Закупка') ? (quantity * (parseFloat(document.getElementById('pricePerUnit').value) || 0)) : 0,
+                pricePerUnit,
+                totalAmount,
                 location,
                 timestamp: new Date().toISOString(),
                 type,
