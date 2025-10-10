@@ -617,16 +617,21 @@
                 location = document.getElementById('customLocation').value.trim();
             }
 
-            const rawPricePerUnit = parseFloat(document.getElementById('pricePerUnit').value);
-            const requiresPrice = type === 'Закупка' || type === 'Відвантаження';
-            if (requiresPrice && (isNaN(rawPricePerUnit) || rawPricePerUnit < 0)) {
+            const priceInputValue = document.getElementById('pricePerUnit').value.trim();
+            const hasPriceInput = priceInputValue !== '';
+            const rawPricePerUnit = hasPriceInput ? parseFloat(priceInputValue) : NaN;
+            const hasValidPrice = hasPriceInput && !isNaN(rawPricePerUnit) && rawPricePerUnit >= 0;
+            const requiresPrice = type === 'Закупка';
+
+            if ((requiresPrice && !hasValidPrice) || (!requiresPrice && hasPriceInput && !hasValidPrice)) {
                 ToastManager.show('Вкажіть коректну ціну за одиницю', 'error');
                 return;
             }
 
-            const pricePerUnit = requiresPrice ? rawPricePerUnit : 0;
-            const computedTotal = requiresPrice ? quantity * pricePerUnit : 0;
-            const totalAmount = requiresPrice && Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
+            const pricePerUnit = hasValidPrice ? rawPricePerUnit : 0;
+            const validQuantity = Number.isFinite(quantity) ? quantity : 0;
+            const computedTotal = validQuantity * pricePerUnit;
+            const totalAmount = Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
 
             const itemData = {
                 id: isEditing ? appState.editingItemId : crypto.randomUUID(),
