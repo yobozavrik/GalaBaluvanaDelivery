@@ -163,13 +163,16 @@
                         <div class="form-group">
                             <label>Фото товару</label>
                             <div class="photo-uploader">
-                                <input type="file" id="photoInput" accept="image/*" style="display: none;">
+                                <input type="file" id="photoInput" accept="image/*,.heic,.heif" capture="environment" style="display: none;">
                                 <button type="button" class="photo-button" onclick="document.getElementById('photoInput').click()">
                                     <i data-lucide="camera"></i>
                                     <span>Додати фото</span>
                                 </button>
                                 <div class="photo-preview" id="photoPreview" style="display: none;">
                                     <img id="previewImage" alt="Попередній перегляд">
+                                    <div id="photoPreviewFallback" class="photo-preview-fallback" style="display: none;">
+                                        Попередній перегляд недоступний для цього формату, але файл буде відправлено.
+                                    </div>
                                     <button type="button" class="remove-photo" onclick="removePhoto()">
                                         <i data-lucide="x"></i>
                                     </button>
