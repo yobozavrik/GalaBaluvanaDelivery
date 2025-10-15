@@ -177,6 +177,9 @@
                                         <i data-lucide="x"></i>
                                     </button>
                                 </div>
+                                <div class="photo-info" id="photoInfo" style="display: none; font-size: 0.75rem; color: var(--muted-foreground); margin-top: 0.5rem;">
+                                    <span id="photoSize"></span>
+                                </div>
                             </div>
                         </div>
                         <div class="total-display" id="totalGroup">
@@ -281,6 +284,7 @@
             }
         }
         const appState = new AppState();
+        window.appState = appState;
 
         const MIN_REQUEST_DELAY_MS = 500;
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -393,7 +397,7 @@
             }
         }
         
-        let selectedPhotoBase64 = null;
+        window.selectedPhotoBase64 = null;
         let typeChartInstance = null;
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -417,8 +421,8 @@
 
         function setupEventListeners() {
             document.getElementById('backButton').addEventListener('click', () => appState.setScreen('main'));
-            document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
-            document.getElementById('photoInput').addEventListener('change', handlePhotoSelect);
+            document.getElementById('purchaseForm').addEventListener('submit', (event) => window.handleFormSubmit(event));
+            document.getElementById('photoInput').addEventListener('change', (event) => window.handlePhotoSelect(event));
             document.getElementById('quantity').addEventListener('input', updateTotalAmount);
             document.getElementById('pricePerUnit').addEventListener('input', updateTotalAmount);
             document.getElementById('location').addEventListener('change', handleLocationChange);
@@ -478,9 +482,28 @@
             }
             
             if (item.photoBase64) {
-                selectedPhotoBase64 = item.photoBase64;
-                document.getElementById('previewImage').src = item.photoBase64;
-                document.getElementById('photoPreview').style.display = 'block';
+                window.selectedPhotoBase64 = item.photoBase64;
+                const previewImage = document.getElementById('previewImage');
+                const previewContainer = document.getElementById('photoPreview');
+                const fallback = document.getElementById('photoPreviewFallback');
+                if (previewImage) {
+                    previewImage.onload = () => {
+                        if (fallback) fallback.style.display = 'none';
+                        previewImage.style.display = '';
+                    };
+                    previewImage.onerror = () => {
+                        if (fallback) fallback.style.display = 'block';
+                        previewImage.style.display = 'none';
+                    };
+                    previewImage.src = item.photoBase64;
+                    previewImage.style.opacity = '1';
+                }
+                if (previewContainer) {
+                    previewContainer.style.display = 'block';
+                }
+                updatePhotoInfoFromBase64(item.photoBase64);
+            } else {
+                hidePhotoInfo();
             }
             
             updateTotalAmount();
@@ -582,91 +605,76 @@
             document.getElementById('totalAmount').textContent = (qty * price).toFixed(2) + ' ₴';
         }
 
-        function handlePhotoSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                selectedPhotoBase64 = e.target.result;
-                document.getElementById('previewImage').src = e.target.result;
-                document.getElementById('photoPreview').style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-        }
-
         function removePhoto() {
-            selectedPhotoBase64 = null;
-            document.getElementById('photoPreview').style.display = 'none';
+            window.selectedPhotoBase64 = null;
+            const preview = document.getElementById('photoPreview');
+            const previewImage = document.getElementById('previewImage');
+            const fallback = document.getElementById('photoPreviewFallback');
+            if (preview) preview.style.display = 'none';
+            if (previewImage) {
+                previewImage.removeAttribute('src');
+                previewImage.style.opacity = '1';
+                previewImage.style.display = '';
+            }
+            if (fallback) fallback.style.display = 'none';
+            hidePhotoInfo();
             document.getElementById('photoInput').value = '';
         }
 
-        async function handleFormSubmit(event) {
-            event.preventDefault();
-            
-            const isEditing = !!appState.editingItemId;
-            let type = 'Закупка';
-            if (!isEditing) {
-                if (appState.isUnloading) type = 'Відвантаження';
-                if (appState.isDelivery) type = 'Доставка';
-            } else {
-                const item = StorageManager.getHistoryItems().find(i => i.id === appState.editingItemId);
-                if (item) type = item.type;
+        function renderPhotoInfo({ sizeKB, width, height, quality, note } = {}) {
+            const infoContainer = document.getElementById('photoInfo');
+            const sizeElement = document.getElementById('photoSize');
+            if (!infoContainer || !sizeElement) return;
+
+            const parts = [];
+            if (typeof sizeKB === 'number' && !Number.isNaN(sizeKB)) {
+                parts.push(`Розмір: ${sizeKB}KB`);
+            }
+            if (width && height) {
+                parts.push(`${width}×${height}`);
+            }
+            if (typeof quality === 'number' && !Number.isNaN(quality)) {
+                parts.push(`Якість: ${quality}%`);
+            }
+            if (note) {
+                parts.push(note);
             }
 
-            const productName = document.getElementById('productName').value.trim();
-            const quantity = parseFloat(document.getElementById('quantity').value);
-            let location = document.getElementById('location').value;
-            if (location === 'Інше') {
-                location = document.getElementById('customLocation').value.trim();
-            }
-
-            const priceInputValue = document.getElementById('pricePerUnit').value.trim();
-            const hasPriceInput = priceInputValue !== '';
-            const rawPricePerUnit = hasPriceInput ? parseFloat(priceInputValue) : NaN;
-            const hasValidPrice = hasPriceInput && !isNaN(rawPricePerUnit) && rawPricePerUnit >= 0;
-            const requiresPrice = type === 'Закупка';
-
-            if ((requiresPrice && !hasValidPrice) || (!requiresPrice && hasPriceInput && !hasValidPrice)) {
-                ToastManager.show('Вкажіть коректну ціну за одиницю', 'error');
+            if (parts.length === 0) {
+                infoContainer.style.display = 'none';
+                sizeElement.textContent = '';
+                sizeElement.classList.remove('size-warning');
                 return;
             }
 
-            const pricePerUnit = hasValidPrice ? rawPricePerUnit : 0;
-            const validQuantity = Number.isFinite(quantity) ? quantity : 0;
-            const computedTotal = validQuantity * pricePerUnit;
-            const totalAmount = Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
+            const limitKB = (typeof IMAGE_CONFIG !== 'undefined' && IMAGE_CONFIG.maxSizeKB) || 0;
+            const shouldWarn = limitKB && typeof sizeKB === 'number' && sizeKB > limitKB;
 
-            const itemData = {
-                id: isEditing ? appState.editingItemId : crypto.randomUUID(),
-                productName,
-                quantity,
-                unit: document.getElementById('unit').value,
-                pricePerUnit,
-                totalAmount,
-                location,
-                timestamp: new Date().toISOString(),
-                type,
-                photoBase64: selectedPhotoBase64,
-            };
-
-            if (isEditing) {
-                StorageManager.updateHistoryItem(appState.editingItemId, itemData);
-                ToastManager.show(`'${productName}' оновлено локально`, 'success');
-            } else {
-                StorageManager.addToHistory(itemData);
-                ToastManager.show(`'${productName}' збережено локально`, 'success');
-            }
-
-            appState.setScreen('main');
-
-            if (itemData.type === 'Закупка') {
-                appState.setTab('purchasesList');
-            } else {
-                appState.setTab('unloadingList');
-            }
-            updateDisplay(appState.tab);
+            infoContainer.style.display = 'flex';
+            sizeElement.textContent = parts.join(' • ');
+            sizeElement.classList.toggle('size-warning', Boolean(shouldWarn));
         }
-        
+
+        function updatePhotoInfoFromBase64(base64, extra = {}) {
+            if (!base64) {
+                hidePhotoInfo();
+                return;
+            }
+            const commaIndex = base64.indexOf(',');
+            const baseLength = commaIndex >= 0 ? base64.length - commaIndex - 1 : base64.length;
+            const sizeKB = Math.round((baseLength * 3) / 4 / 1024);
+            renderPhotoInfo({ sizeKB, ...extra });
+        }
+
+        function hidePhotoInfo() {
+            const infoContainer = document.getElementById('photoInfo');
+            const sizeElement = document.getElementById('photoSize');
+            if (!infoContainer || !sizeElement) return;
+            infoContainer.style.display = 'none';
+            sizeElement.textContent = '';
+            sizeElement.classList.remove('size-warning');
+        }
+
         function dataURLToBlob(dataUrl) {
             if (typeof dataUrl !== 'string') return null;
             const parts = dataUrl.split(',');
@@ -966,6 +974,406 @@
             hideEndDayModal();
             ToastManager.show('Робочий день завершено. Історію очищено.', 'success');
         }
+
+        // ============================================
+        // ВИПРАВЛЕННЯ ПРОБЛЕМИ З ФОТО НА iOS
+        // ============================================
+        const IMAGE_CONFIG = {
+            maxWidth: 1024,
+            maxHeight: 1024,
+            quality: 0.85,
+            maxSizeKB: 500
+        };
+        window.IMAGE_CONFIG = IMAGE_CONFIG;
+
+        async function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+
+                reader.onerror = () => reject(new Error('Не вдалося прочитати файл'));
+
+                reader.onload = (e) => {
+                    const img = new Image();
+
+                    img.onerror = () => reject(new Error('Не вдалося завантажити зображення'));
+
+                    img.onload = () => {
+                        try {
+                            let width = img.width;
+                            let height = img.height;
+
+                            if (width > IMAGE_CONFIG.maxWidth || height > IMAGE_CONFIG.maxHeight) {
+                                const ratio = Math.min(
+                                    IMAGE_CONFIG.maxWidth / width,
+                                    IMAGE_CONFIG.maxHeight / height
+                                );
+                                width = Math.round(width * ratio);
+                                height = Math.round(height * ratio);
+                            }
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = width;
+                            canvas.height = height;
+
+                            const ctx = canvas.getContext('2d');
+                            ctx.imageSmoothingEnabled = true;
+                            ctx.imageSmoothingQuality = 'high';
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            let quality = IMAGE_CONFIG.quality;
+                            let compressed = canvas.toDataURL('image/jpeg', quality);
+
+                            while (compressed.length > IMAGE_CONFIG.maxSizeKB * 1024 * 1.37 && quality > 0.5) {
+                                quality -= 0.05;
+                                compressed = canvas.toDataURL('image/jpeg', quality);
+                            }
+
+                            const finalSizeKB = Math.round(compressed.length / 1024 / 1.37);
+                            const originalSizeKB = Math.round(file.size / 1024);
+
+                            console.log(`📸 Зображення стиснуто: ${originalSizeKB}KB → ${finalSizeKB}KB`);
+
+                            resolve({
+                                dataUrl: compressed,
+                                sizeKB: finalSizeKB,
+                                width,
+                                height,
+                                quality: Math.round(quality * 100),
+                                originalSizeKB
+                            });
+
+                        } catch (error) {
+                            reject(new Error('Помилка стиснення: ' + error.message));
+                        }
+                    };
+
+                    img.src = e.target.result;
+                };
+
+                reader.readAsDataURL(file);
+            });
+        }
+
+        window.handlePhotoSelect = async function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const previewContainer = document.getElementById('photoPreview');
+            const previewImage = document.getElementById('previewImage');
+            const fallback = document.getElementById('photoPreviewFallback');
+            const originalSizeKB = Math.round(file.size / 1024);
+
+            if (previewContainer) {
+                previewContainer.style.display = 'block';
+            }
+            if (fallback) {
+                fallback.style.display = 'none';
+            }
+            if (previewImage) {
+                previewImage.onload = () => {
+                    if (fallback) fallback.style.display = 'none';
+                    previewImage.style.display = '';
+                };
+                previewImage.onerror = () => {
+                    if (fallback) fallback.style.display = 'block';
+                    previewImage.style.display = 'none';
+                };
+                previewImage.style.opacity = '0.5';
+                previewImage.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRleHQ+Li4uPC90ZXh0Pjwvc3ZnPg==';
+            }
+
+            try {
+                const compressed = await compressImage(file);
+
+                window.selectedPhotoBase64 = compressed.dataUrl;
+
+                if (previewImage) {
+                    previewImage.src = compressed.dataUrl;
+                    previewImage.style.opacity = '1';
+                }
+
+                renderPhotoInfo({
+                    sizeKB: compressed.sizeKB,
+                    width: compressed.width,
+                    height: compressed.height,
+                    quality: compressed.quality,
+                    note: compressed.originalSizeKB ? `Було: ${compressed.originalSizeKB}KB` : undefined
+                });
+
+                if (compressed.quality < 80) {
+                    ToastManager.show(
+                        `Фото стиснуто для економії місця (${compressed.sizeKB}KB)`,
+                        'info'
+                    );
+                }
+
+                if (compressed.sizeKB > IMAGE_CONFIG.maxSizeKB) {
+                    ToastManager.show(
+                        `Попередження: фото все ще має розмір ${compressed.sizeKB}KB`,
+                        'warning'
+                    );
+                }
+
+            } catch (error) {
+                console.error('Помилка обробки фото:', error);
+
+                try {
+                    const fallbackDataUrl = await new Promise((resolve, reject) => {
+                        const fallbackReader = new FileReader();
+                        fallbackReader.onerror = () => reject(new Error('Не вдалося прочитати файл (fallback)'));
+                        fallbackReader.onload = (ev) => resolve(ev.target.result);
+                        fallbackReader.readAsDataURL(file);
+                    });
+
+                    window.selectedPhotoBase64 = fallbackDataUrl;
+
+                    if (previewImage) {
+                        previewImage.src = fallbackDataUrl;
+                        previewImage.style.opacity = '1';
+                        previewImage.style.display = '';
+                    }
+                    if (previewContainer) {
+                        previewContainer.style.display = 'block';
+                    }
+
+                    renderPhotoInfo({
+                        sizeKB: originalSizeKB,
+                        note: 'Без стиснення'
+                    });
+
+                    ToastManager.show(
+                        'Фото збережено без стиснення. Може займати багато місця.',
+                        'warning'
+                    );
+
+                } catch (fallbackError) {
+                    console.error('Помилка резервного збереження фото:', fallbackError);
+
+                    window.selectedPhotoBase64 = null;
+                    if (previewContainer) {
+                        previewContainer.style.display = 'none';
+                    }
+                    if (previewImage) {
+                        previewImage.removeAttribute('src');
+                        previewImage.style.opacity = '1';
+                        previewImage.style.display = '';
+                    }
+                    if (fallback) {
+                        fallback.style.display = 'none';
+                    }
+                    hidePhotoInfo();
+                    event.target.value = '';
+
+                    ToastManager.show(
+                        'Не вдалося обробити фото. Спробуйте інше зображення.',
+                        'error'
+                    );
+                }
+            }
+        };
+
+        const OriginalStorageManager = window.StorageManager;
+
+        window.StorageManager = class extends OriginalStorageManager {
+            static setHistoryItems(items) {
+                try {
+                    localStorage.setItem('purchase_history', JSON.stringify(items));
+                    return true;
+
+                } catch (error) {
+                    console.error('Помилка збереження в localStorage:', error);
+
+                    if (error.name === 'QuotaExceededError' || error.code === 22) {
+                        console.warn('⚠️ localStorage заповнено. Очищаємо старі записи...');
+
+                        try {
+                            const reducedItems = items.slice(0, 50);
+                            localStorage.setItem('purchase_history', JSON.stringify(reducedItems));
+
+                            ToastManager.show(
+                                'Історію скорочено через ліміт пам\'яті. Старі записи видалено.',
+                                'warning'
+                            );
+
+                            return true;
+
+                        } catch (retryError) {
+                            console.error('Не вдалося зберегти навіть після очищення:', retryError);
+
+                            ToastManager.show(
+                                'Критична помилка: не вдається зберегти дані. Відправте існуючі записи в n8n.',
+                                'error'
+                            );
+
+                            return false;
+                        }
+                    }
+
+                    ToastManager.show(
+                        'Помилка збереження: ' + error.message,
+                        'error'
+                    );
+
+                    return false;
+                }
+            }
+
+            static addToHistory(item) {
+                const items = this.getHistoryItems();
+                items.unshift(item);
+
+                const success = this.setHistoryItems(items);
+
+                if (!success) {
+                    console.error('❌ Запис НЕ збережено локально:', item.id);
+                    throw new Error('Не вдалося зберегти запис локально');
+                }
+
+                console.log('✅ Запис збережено локально:', item.id);
+                return true;
+            }
+
+            static updateHistoryItem(id, updatedItem) {
+                let items = this.getHistoryItems();
+                const itemIndex = items.findIndex(i => i.id === id);
+
+                if (itemIndex > -1) {
+                    items[itemIndex] = { ...items[itemIndex], ...updatedItem };
+                    const success = this.setHistoryItems(items);
+
+                    if (!success) {
+                        throw new Error('Не вдалося оновити запис локально');
+                    }
+
+                    return true;
+                }
+
+                return false;
+            }
+        };
+
+        window.handleFormSubmit = async function(event) {
+            event.preventDefault();
+
+            const isEditing = !!window.appState.editingItemId;
+            let type = 'Закупка';
+
+            if (!isEditing) {
+                if (window.appState.isUnloading) type = 'Відвантаження';
+                if (window.appState.isDelivery) type = 'Доставка';
+            } else {
+                const item = StorageManager.getHistoryItems().find(i => i.id === window.appState.editingItemId);
+                if (item) type = item.type;
+            }
+
+            const productName = document.getElementById('productName').value.trim();
+            const quantity = parseFloat(document.getElementById('quantity').value);
+            let location = document.getElementById('location').value;
+
+            if (location === 'Інше') {
+                location = document.getElementById('customLocation').value.trim();
+            }
+
+            const priceInputValue = document.getElementById('pricePerUnit').value.trim();
+            const hasPriceInput = priceInputValue !== '';
+            const rawPricePerUnit = hasPriceInput ? parseFloat(priceInputValue) : NaN;
+            const hasValidPrice = hasPriceInput && !isNaN(rawPricePerUnit) && rawPricePerUnit >= 0;
+            const requiresPrice = type === 'Закупка';
+
+            if ((requiresPrice && !hasValidPrice) || (!requiresPrice && hasPriceInput && !hasValidPrice)) {
+                ToastManager.show('Вкажіть коректну ціну за одиницю', 'error');
+                return;
+            }
+
+            const pricePerUnit = hasValidPrice ? rawPricePerUnit : 0;
+            const validQuantity = Number.isFinite(quantity) ? quantity : 0;
+            const computedTotal = validQuantity * pricePerUnit;
+            const totalAmount = Number.isFinite(computedTotal) ? Number(computedTotal.toFixed(2)) : 0;
+
+            const itemData = {
+                id: isEditing ? window.appState.editingItemId : crypto.randomUUID(),
+                productName,
+                quantity,
+                unit: document.getElementById('unit').value,
+                pricePerUnit,
+                totalAmount,
+                location,
+                timestamp: new Date().toISOString(),
+                type,
+                photoBase64: window.selectedPhotoBase64,
+            };
+
+            try {
+                if (isEditing) {
+                    StorageManager.updateHistoryItem(window.appState.editingItemId, itemData);
+                    ToastManager.show(`'${productName}' оновлено локально`, 'success');
+                } else {
+                    StorageManager.addToHistory(itemData);
+                    ToastManager.show(`'${productName}' збережено локально`, 'success');
+                }
+
+                window.appState.setScreen('main');
+
+                if (itemData.type === 'Закупка') {
+                    window.appState.setTab('purchasesList');
+                } else {
+                    window.appState.setTab('unloadingList');
+                }
+
+                updateDisplay(window.appState.tab);
+
+            } catch (error) {
+                console.error('❌ Критична помилка збереження:', error);
+
+                ToastManager.show(
+                    `Не вдалося зберегти запис${window.selectedPhotoBase64 ? ' з фото' : ''}. ` +
+                    'Спробуйте: 1) Відправити існуючі записи 2) Видалити фото 3) Очистити історію',
+                    'error'
+                );
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                const testKey = '__storage_test__';
+                let i = 0;
+                let available = 0;
+
+                try {
+                    for (i = 0; i < 10000; i++) {
+                        localStorage.setItem(testKey + i, '1234567890'.repeat(100));
+                    }
+                    available = Math.round(i * 1000 / 1024);
+                } catch (e) {
+                    available = Math.round(i * 1000 / 1024);
+                } finally {
+                    for (let j = 0; j < i; j++) {
+                        localStorage.removeItem(testKey + j);
+                    }
+                }
+
+                console.log(`📊 Доступно localStorage: ~${available}KB`);
+
+                let currentSize = 0;
+                for (let key in localStorage) {
+                    if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
+                        currentSize += localStorage[key].length + key.length;
+                    }
+                }
+
+                currentSize = Math.round(currentSize / 1024);
+                console.log(`💾 Використано localStorage: ~${currentSize}KB`);
+
+                if (available > 0 && currentSize > available * 0.8) {
+                    console.warn('⚠️ localStorage майже заповнено! Рекомендується відправити дані.');
+                }
+
+            } catch (error) {
+                console.error('Помилка діагностики localStorage:', error);
+            }
+        });
+
+        console.log('✅ iOS Photo Fix завантажено');
 
         window.switchTab = switchTab;
         window.startPurchase = startPurchase;
