@@ -246,7 +246,16 @@ class SecureStorageManager {
     static getHistoryItems() {
         try {
             const data = sessionStorage.getItem('purchase_history');
-            return data ? JSON.parse(data) : [];
+            if (!data) {
+                return [];
+            }
+
+            const parsed = JSON.parse(data);
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+
+            return parsed.filter(item => this.validateHistoryItem(item));
         } catch (error) {
             console.error('Error reading from storage:', error);
             return [];
@@ -255,25 +264,52 @@ class SecureStorageManager {
 
     static addToHistory(item) {
         try {
-            const items = this.getHistoryItems();
-            // Security: Validate item before storing
-            if (this.validateHistoryItem(item)) {
-                items.push(item);
-                sessionStorage.setItem('purchase_history', JSON.stringify(items));
+            if (!this.validateHistoryItem(item)) {
+                console.warn('Skipping invalid history item.');
+                return false;
             }
+
+            const items = this.getHistoryItems();
+            items.push(item);
+            sessionStorage.setItem('purchase_history', JSON.stringify(items));
+            return true;
         } catch (error) {
             console.error('Error saving to storage:', error);
+            return false;
         }
     }
 
     static validateHistoryItem(item) {
-        return item && 
-               typeof item.id === 'string' &&
-               typeof item.productName === 'string' &&
-               typeof item.quantity === 'number' &&
-               typeof item.unit === 'string' &&
-               typeof item.location === 'string' &&
-               typeof item.timestamp === 'string';
+        if (!item || typeof item !== 'object') {
+            return false;
+        }
+
+        const hasRequiredFields =
+            typeof item.id === 'string' &&
+            typeof item.productName === 'string' &&
+            typeof item.quantity === 'number' &&
+            typeof item.unit === 'string' &&
+            typeof item.location === 'string' &&
+            typeof item.timestamp === 'string';
+
+        if (!hasRequiredFields) {
+            return false;
+        }
+
+        if (item.photo) {
+            const photo = item.photo;
+            const isPhotoValid =
+                typeof photo === 'object' &&
+                typeof photo.name === 'string' &&
+                typeof photo.type === 'string' &&
+                typeof photo.size === 'number' &&
+                typeof photo.content === 'string';
+            if (!isPhotoValid) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     static clearHistory() {
@@ -483,6 +519,7 @@ const apiClient = new SecureApiClient(config);
 
 let selectedFile = null;
 let selectedFileCleanup = null;
+const MAX_LOCAL_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB limit for local persistence
 
 function cleanupSelectedFilePreview() {
     if (typeof selectedFileCleanup === 'function') {
@@ -515,6 +552,38 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+function decodeSanitizedText(value) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    const entityMap = {
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#x27;': "'",
+        '&amp;': '&'
+    };
+
+    return value.replace(/(&lt;|&gt;|&quot;|&#x27;|&amp;)/g, (match) => entityMap[match] || match);
+}
+
+function formatFileSize(bytes) {
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) {
+        return '0 Б';
+    }
+
+    if (bytes >= 1024 * 1024) {
+        return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+    }
+
+    if (bytes >= 1024) {
+        return `${Math.round(bytes / 1024)} КБ`;
+    }
+
+    return `${bytes} Б`;
 }
 
 // Security: Form validation and error handling
@@ -990,18 +1059,29 @@ async function buildWebhookPayload(itemData, file) {
         }
     }
 
+    let attachment = null;
+
     if (file) {
         const base64 = await fileToBase64(file);
+        const mimeType = typeof file.type === 'string' && file.type ? file.type : 'application/octet-stream';
+
         payload.attachments = [{
             name: file.name,
-            type: file.type,
+            type: mimeType,
             size: file.size,
             encoding: 'base64',
             content: base64
         }];
+
+        attachment = {
+            name: file.name,
+            type: mimeType,
+            size: file.size,
+            content: base64
+        };
     }
 
-    return payload;
+    return { payload, attachment };
 }
 
 async function handleFormSubmit(event) {
@@ -1066,10 +1146,24 @@ async function handleFormSubmit(event) {
             console.log('📸 Добавляем файл:', selectedFile.name, selectedFile.size, 'bytes');
         }
 
-        const payload = await buildWebhookPayload(itemData, selectedFile);
+        const { payload, attachment } = await buildWebhookPayload(itemData, selectedFile);
 
         await apiClient.sendPurchaseData(payload);
-        SecureStorageManager.addToHistory(itemData);
+
+        const historyItem = { ...itemData };
+
+        if (attachment) {
+            if (attachment.size <= MAX_LOCAL_PHOTO_SIZE) {
+                historyItem.photo = attachment;
+            } else {
+                toastManager.show('Фото прикріплено до заявки, але його розмір занадто великий для локального збереження (>5 МБ).', 'warning');
+            }
+        }
+
+        const stored = SecureStorageManager.addToHistory(historyItem);
+        if (!stored) {
+            toastManager.show('Запис відправлено, але не вдалося зберегти його локально.', 'warning');
+        }
         toastManager.show(`'${productName}' відправлено в облік`, 'success');
         appState.setScreen('main');
         updateHistoryDisplay();
@@ -1098,34 +1192,104 @@ function updateHistoryDisplay() {
         items.forEach(item => {
             const itemEl = document.createElement('div');
             itemEl.className = 'cart-item glassmorphism';
-            
+
             // Security: Use textContent instead of innerHTML to prevent XSS
             const nameEl = document.createElement('div');
             nameEl.className = 'cart-item-name';
-            nameEl.textContent = item.productName;
-            
+            nameEl.textContent = decodeSanitizedText(item.productName);
+
             const categoryEl = document.createElement('div');
             categoryEl.className = 'cart-item-category';
             categoryEl.textContent = item.type;
-            
+
             const headerEl = document.createElement('div');
             headerEl.className = 'cart-item-header';
             headerEl.appendChild(nameEl);
             headerEl.appendChild(categoryEl);
-            
+
             const detailsEl = document.createElement('div');
             detailsEl.className = 'cart-item-details';
-            detailsEl.innerHTML = `
-                <div><span class="cart-item-detail-label">Кількість:</span> ${item.quantity} ${item.unit}</div>
-                <div><span class="cart-item-detail-label">Локація:</span> ${item.location}</div>
-                <div class="cart-item-total"><span class="cart-item-detail-label">Сума:</span> ${item.totalAmount.toFixed(2)} ₴</div>
-            `;
-            
+            const safeLocation = decodeSanitizedText(item.location);
+            const safeUnit = decodeSanitizedText(item.unit);
+
+            const quantityBlock = document.createElement('div');
+            const quantityLabel = document.createElement('span');
+            quantityLabel.className = 'cart-item-detail-label';
+            quantityLabel.textContent = 'Кількість:';
+            quantityBlock.appendChild(quantityLabel);
+            quantityBlock.append(` ${item.quantity} ${safeUnit}`);
+
+            const locationBlock = document.createElement('div');
+            const locationLabel = document.createElement('span');
+            locationLabel.className = 'cart-item-detail-label';
+            locationLabel.textContent = 'Локація:';
+            locationBlock.appendChild(locationLabel);
+            locationBlock.append(` ${safeLocation}`);
+
+            const totalBlock = document.createElement('div');
+            totalBlock.className = 'cart-item-total';
+            const totalLabel = document.createElement('span');
+            totalLabel.className = 'cart-item-detail-label';
+            totalLabel.textContent = 'Сума:';
+            totalBlock.appendChild(totalLabel);
+            totalBlock.append(` ${item.totalAmount.toFixed(2)} ₴`);
+
+            detailsEl.appendChild(quantityBlock);
+            detailsEl.appendChild(locationBlock);
+            detailsEl.appendChild(totalBlock);
+
             itemEl.appendChild(headerEl);
             itemEl.appendChild(detailsEl);
+
+            if (item.photo && typeof item.photo.content === 'string' && item.photo.content) {
+                const mediaWrapper = document.createElement('div');
+                mediaWrapper.className = 'cart-item-media';
+
+                const mimeType = (typeof item.photo.type === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(item.photo.type))
+                    ? item.photo.type
+                    : 'application/octet-stream';
+                const dataUrl = `data:${mimeType};base64,${item.photo.content}`;
+                const image = document.createElement('img');
+                image.loading = 'lazy';
+                const decodedProductName = decodeSanitizedText(item.productName);
+                image.alt = decodedProductName ? `Фото ${decodedProductName}` : 'Фото товару';
+                image.src = dataUrl;
+
+                const downloadName = item.photo.name || 'attachment';
+                const fileSizeLabel = formatFileSize(item.photo.size);
+                const caption = document.createElement('span');
+                caption.className = 'cart-item-media-caption';
+                caption.textContent = `${downloadName} • ${fileSizeLabel}`;
+
+                const renderFallback = () => {
+                    mediaWrapper.innerHTML = '';
+                    const fallback = document.createElement('div');
+                    fallback.className = 'cart-item-media-fallback';
+
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = downloadName;
+                    link.textContent = `${downloadName} (${fileSizeLabel})`;
+
+                    const fallbackText = document.createElement('span');
+                    fallbackText.className = 'cart-item-media-caption';
+                    fallbackText.textContent = 'Попередній перегляд недоступний. Натисніть, щоб завантажити файл.';
+
+                    fallback.appendChild(link);
+                    fallback.appendChild(fallbackText);
+                    mediaWrapper.appendChild(fallback);
+                };
+
+                image.addEventListener('error', renderFallback, { once: true });
+
+                mediaWrapper.appendChild(image);
+                mediaWrapper.appendChild(caption);
+                itemEl.appendChild(mediaWrapper);
+            }
+
             itemsContainer.appendChild(itemEl);
         });
-        
+
         document.getElementById('historySummary').textContent = `${items.length} запис(ів) за сесію`;
     } else {
         document.getElementById('historyEmpty').style.display = 'block';

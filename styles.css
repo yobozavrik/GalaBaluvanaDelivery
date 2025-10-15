@@ -494,8 +494,53 @@ body.test-mode .app-header {
     color: var(--muted-foreground); 
 }
 
-.cart-item-total { 
-    font-weight: 700; 
+.cart-item-total {
+    font-weight: 700;
+}
+
+.cart-item-media {
+    margin-top: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 0.25rem);
+    padding: 0.5rem;
+    background: var(--card);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.cart-item-media img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: calc(var(--radius) - 0.5rem);
+    background: var(--muted);
+    box-shadow: var(--shadow-soft);
+}
+
+.cart-item-media-caption {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    text-align: center;
+    word-break: break-word;
+}
+
+.cart-item-media-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.cart-item-media-fallback a {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.cart-item-media-fallback a:hover,
+.cart-item-media-fallback a:focus-visible {
+    text-decoration: underline;
 }
 
 .bottom-navigation {
