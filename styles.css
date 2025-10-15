@@ -670,3 +670,28 @@ body.test-mode .app-header {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* iOS Photo optimization info */
+.photo-info {
+    padding: 0.5rem;
+    background: var(--muted);
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.photo-info::before {
+    content: '📸';
+}
+
+/* Loading state for image */
+.photo-preview img[style*="opacity: 0.5"] {
+    filter: blur(2px);
+}
+
+/* Warning badge for large files */
+.size-warning {
+    color: var(--destructive);
+    font-weight: 600;
+}
