@@ -39,9 +39,11 @@ class InputValidator {
 
     static validateFile(file) {
         if (!file) return true; // File is optional
-        const maxSize = 5 * 1024 * 1024; // 5MB
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        return file.size <= maxSize && allowedTypes.includes(file.type);
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const isImageType = typeof file.type === 'string' && file.type.startsWith('image/');
+        const hasImageExtension = typeof file.name === 'string'
+            && /\.(apng|avif|bmp|gif|heic|heif|ico|jfif|jpg|jpeg|png|svg|tif|tiff|webp)$/i.test(file.name);
+        return file.size <= maxSize && (isImageType || hasImageExtension);
     }
 }
 
