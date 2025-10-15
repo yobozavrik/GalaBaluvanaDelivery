@@ -482,6 +482,27 @@ const toastManager = new ToastManager();
 const apiClient = new SecureApiClient(config);
 
 let selectedFile = null;
+let selectedFileCleanup = null;
+
+function cleanupSelectedFilePreview() {
+    if (typeof selectedFileCleanup === 'function') {
+        try {
+            selectedFileCleanup();
+        } catch (error) {
+            console.warn('Не вдалося звільнити попередній ресурс зображення:', error);
+        }
+    }
+    selectedFileCleanup = null;
+
+    if (typeof document !== 'undefined') {
+        const previewImage = document.getElementById('previewImage');
+        if (previewImage) {
+            previewImage.onload = null;
+            previewImage.onerror = null;
+            previewImage.removeAttribute('src');
+        }
+    }
+}
 
 // Performance: Debounced functions
 function debounce(func, wait) {
@@ -772,27 +793,102 @@ function updateTotalAmount() {
 }
 
 function handlePhotoSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    if (!InputValidator.validateFile(file)) {
-        toastManager.show('Файл занадто великий або непідтримуваний формат', 'error');
-        event.target.value = '';
+    const file = event.target.files && event.target.files[0];
+    if (!file) {
+        removePhoto();
         return;
     }
-    
-    selectedFile = file;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        document.getElementById('previewImage').src = e.target.result;
-        document.getElementById('photoPreview').style.display = 'block';
-    };
-    reader.readAsDataURL(selectedFile);
+
+    cleanupSelectedFilePreview();
+
+    const previewContainer = document.getElementById('photoPreview');
+    const previewImage = document.getElementById('previewImage');
+    const fallbackMessage = document.getElementById('photoPreviewFallback');
+
+    if (previewContainer) {
+        previewContainer.style.display = 'none';
+    }
+    if (previewImage) {
+        previewImage.style.display = 'none';
+    }
+    if (fallbackMessage) {
+        fallbackMessage.style.display = 'none';
+    }
+
+    try {
+        if (!InputValidator.validateFile(file)) {
+            throw new Error('Файл занадто великий або непідтримуваний формат');
+        }
+
+        selectedFile = file;
+
+        if (previewContainer) {
+            previewContainer.style.display = 'block';
+        }
+
+        let previewUrl = null;
+
+        if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            try {
+                previewUrl = URL.createObjectURL(file);
+            } catch (error) {
+                console.warn('Не вдалося створити попередній перегляд зображення:', error);
+            }
+        }
+
+        if (previewUrl && previewImage) {
+            selectedFileCleanup = () => URL.revokeObjectURL(previewUrl);
+
+            previewImage.onload = () => {
+                previewImage.style.display = 'block';
+                if (fallbackMessage) {
+                    fallbackMessage.style.display = 'none';
+                }
+            };
+
+            previewImage.onerror = () => {
+                console.warn('Формат зображення не підтримується для попереднього перегляду, файл буде відправлено без нього.');
+                if (fallbackMessage) {
+                    fallbackMessage.style.display = 'block';
+                }
+                previewImage.style.display = 'none';
+                cleanupSelectedFilePreview();
+            };
+
+            previewImage.src = previewUrl;
+        } else if (fallbackMessage) {
+            fallbackMessage.style.display = 'block';
+            selectedFileCleanup = null;
+        }
+    } catch (error) {
+        console.error('Помилка обробки фото:', error);
+        toastManager.show(error.message || 'Не вдалося обробити фото. Спробуйте ще раз.', 'error');
+        event.target.value = '';
+        removePhoto();
+    }
 }
 
 function removePhoto() {
-    document.getElementById('photoPreview').style.display = 'none';
-    document.getElementById('photoInput').value = '';
+    const previewContainer = document.getElementById('photoPreview');
+    const previewImage = document.getElementById('previewImage');
+    const fallbackMessage = document.getElementById('photoPreviewFallback');
+
+    if (previewContainer) {
+        previewContainer.style.display = 'none';
+    }
+    if (previewImage) {
+        previewImage.style.display = 'none';
+    }
+    if (fallbackMessage) {
+        fallbackMessage.style.display = 'none';
+    }
+
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) {
+        photoInput.value = '';
+    }
+
+    cleanupSelectedFilePreview();
     selectedFile = null;
 }
 
@@ -977,7 +1073,8 @@ async function handleFormSubmit(event) {
         toastManager.show(`'${productName}' відправлено в облік`, 'success');
         appState.setScreen('main');
         updateHistoryDisplay();
-        
+        removePhoto();
+
     } catch (error) {
         console.error('Error sending data:', error);
         toastManager.show(`Помилка відправки: ${error.message}. Спробуйте ще раз.`, 'error');
