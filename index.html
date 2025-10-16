@@ -332,6 +332,11 @@
             ]
         };
 
+        const CANONICAL_UNLOADING_TYPE = 'Відвантаження';
+        const UNLOADING_TYPE_ALIASES = new Set([CANONICAL_UNLOADING_TYPE, 'Розвантаження']);
+        const isUnloadingType = (type) => UNLOADING_TYPE_ALIASES.has(type);
+        const normalizeType = (type) => isUnloadingType(type) ? CANONICAL_UNLOADING_TYPE : type;
+
         class StorageManager {
             static get(key, defaultValue = []) {
                 try {
@@ -403,7 +408,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             ThemeManager.init();
-            
+            migrateLegacyUnloadingTypes();
+
             setTimeout(() => {
                 document.getElementById('loadingScreen').style.display = 'none';
                 appState.updateUI();
@@ -459,7 +465,7 @@
             const item = items.find(i => i.id === itemId);
             if(!item) return;
 
-            const isUnloading = item.type === 'Відвантаження';
+            const isUnloading = isUnloadingType(item.type);
             const isDelivery = item.type === 'Доставка';
             
             appState.setScreen('purchase-form', { isUnloading, isDelivery, editingItemId: itemId });
@@ -529,7 +535,7 @@
                 if(item) currentType = item.type;
             }
 
-            const isUnloadingState = (!isEditing && appState.isUnloading) || (isEditing && currentType === 'Відвантаження');
+            const isUnloadingState = (!isEditing && appState.isUnloading) || (isEditing && isUnloadingType(currentType));
             const isDeliveryState = (!isEditing && appState.isDelivery) || (isEditing && currentType === 'Доставка');
 
             if (isDeliveryState) {
@@ -783,7 +789,7 @@
             const itemsById = new Map(allItems.map(item => [item.id, item]));
             const itemsToSend = allItems.filter(item => {
                 if (listType === 'purchasesList') return item.type === 'Закупка';
-                return item.type === 'Відвантаження' || item.type === 'Доставка';
+                return isUnloadingType(item.type) || item.type === 'Доставка';
             });
 
             if (itemsToSend.length === 0) {
@@ -848,7 +854,7 @@
                 summary = document.getElementById('purchasesListSummary');
                 empty = document.getElementById('purchasesListEmpty');
             } else {
-                itemsToShow = allItems.filter(item => item.type === 'Відвантаження' || item.type === 'Доставка');
+                itemsToShow = allItems.filter(item => isUnloadingType(item.type) || item.type === 'Доставка');
                 container = document.getElementById('unloadingListItems');
                 summary = document.getElementById('unloadingListSummary');
                 empty = document.getElementById('unloadingListEmpty');
@@ -1251,6 +1257,27 @@
                 return false;
             }
         };
+
+        function migrateLegacyUnloadingTypes() {
+            const items = StorageManager.getHistoryItems();
+            let hasChanges = false;
+
+            const normalizedItems = items.map(item => {
+                if (item && typeof item === 'object') {
+                    const normalizedType = normalizeType(item.type);
+                    if (normalizedType !== item.type) {
+                        hasChanges = true;
+                        return { ...item, type: normalizedType };
+                    }
+                }
+                return item;
+            });
+
+            if (hasChanges) {
+                StorageManager.setHistoryItems(normalizedItems);
+                console.log('🔄 Оновлено застарілі типи відвантажень до канонічного значення.');
+            }
+        }
 
         window.handleFormSubmit = async function(event) {
             event.preventDefault();
