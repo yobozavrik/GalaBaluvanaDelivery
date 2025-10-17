@@ -154,13 +154,18 @@ class SecureConfig {
 
     get units() {
         return [
-            { value: 'kg', label: 'кг' }, 
+            { value: 'kg', label: 'кг' },
             { value: 'piece', label: 'шт' },
-            { value: 'pack', label: 'упаковка' }, 
+            { value: 'pack', label: 'упаковка' },
             { value: 'box', label: 'ящик' },
-            { value: 'bunch', label: 'пучок' }, 
+            { value: 'bunch', label: 'пучок' },
             { value: 'other', label: 'інше' }
         ];
+    }
+
+    getUnitLabel(value) {
+        const unit = this.units.find(unitOption => unitOption.value === value);
+        return unit ? unit.label : value;
     }
 
     get marketLocations() {
@@ -1027,6 +1032,7 @@ async function buildWebhookPayload(itemData, file) {
         productName: toStringValue(itemData.productName),
         quantity: toStringValue(itemData.quantity),
         unit: toStringValue(itemData.unit),
+        unitValue: toStringValue(itemData.unitValue),
         pricePerUnit: toStringValue(itemData.pricePerUnit),
         totalAmount: toStringValue(itemData.totalAmount),
         location: toStringValue(itemData.location)
@@ -1041,6 +1047,7 @@ async function buildWebhookPayload(itemData, file) {
             productName: itemData.productName,
             quantity: itemData.quantity,
             unit: itemData.unit,
+            unitValue: itemData.unitValue,
             pricePerUnit: itemData.pricePerUnit,
             totalAmount: itemData.totalAmount,
             location: itemData.location
@@ -1084,6 +1091,7 @@ async function buildWebhookPayload(itemData, file) {
         flatFields[`${prefix}_product`] = toStringValue(itemData.productName);
         flatFields[`${prefix}_quantity`] = toStringValue(itemData.quantity);
         flatFields[`${prefix}_unit`] = toStringValue(itemData.unit);
+        flatFields[`${prefix}_unit_value`] = toStringValue(itemData.unitValue);
         flatFields[`${prefix}_location`] = toStringValue(itemData.location);
 
         if (itemData.type === 'Закупка' || itemData.type === 'Розвантаження') {
@@ -1151,7 +1159,11 @@ async function handleFormSubmit(event) {
             location = InputValidator.sanitizeString(document.getElementById('customLocation').value);
         }
 
-        const unit = document.getElementById('unit').value;
+        const unitSelect = document.getElementById('unit');
+        const unitValueRaw = unitSelect ? unitSelect.value : '';
+        const unitLabel = config.getUnitLabel(unitValueRaw);
+        const unit = InputValidator.sanitizeString(unitLabel);
+        const unitValue = InputValidator.sanitizeString(unitValueRaw);
         const parsedPricePerUnit = priceInputValue !== '' ? parseFloat(priceInputValue) : NaN;
         const hasValidPrice = priceInputValue !== '' && !isNaN(parsedPricePerUnit) && parsedPricePerUnit >= 0;
         const pricePerUnit = hasValidPrice ? parsedPricePerUnit : 0;
@@ -1166,6 +1178,7 @@ async function handleFormSubmit(event) {
             productName,
             quantity,
             unit,
+            unitValue,
             pricePerUnit,
             totalAmount,
             location,
