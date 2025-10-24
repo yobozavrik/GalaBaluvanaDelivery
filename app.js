@@ -418,7 +418,7 @@ class ThemeManager {
         if (themeIcon) {
             themeIcon.setAttribute('data-lucide', theme === 'light' ? 'moon' : 'sun');
             if (window.lucide) {
-                lucide.createIcons();
+                lucide.createIcons({ icons: lucide.icons });
             }
         }
     }
@@ -1222,7 +1222,7 @@ async function handleFormSubmit(event) {
         saveButton.disabled = false;
         saveButton.innerHTML = '<i data-lucide="send"></i><span id="saveButtonText">Відправити в облік</span>';
         if (window.lucide) {
-            lucide.createIcons();
+            lucide.createIcons({ icons: lucide.icons });
         }
     }
 }
@@ -1363,7 +1363,7 @@ async function endWorkDay() {
     }
     
     if (window.lucide) {
-        lucide.createIcons();
+        lucide.createIcons({ icons: lucide.icons });
     }
     
     document.getElementById('confirmEndDayBtn').onclick = () => {
@@ -1382,7 +1382,7 @@ function closeAiSummaryModal() {
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize icons
     if (window.lucide) {
-        lucide.createIcons();
+        lucide.createIcons({ icons: lucide.icons });
     }
     
     // Initialize theme
