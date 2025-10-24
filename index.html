@@ -391,22 +391,27 @@
                     this.setTheme(newTheme);
                 });
             }
+            static createIconsSafe() {
+                if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                    window.lucide.createIcons();
+                }
+            }
             static setTheme(theme) {
                 document.documentElement.setAttribute('data-theme', theme);
                 localStorage.setItem('theme', theme);
                 const themeIcon = document.querySelector('.theme-icon');
                 if(themeIcon) {
                     themeIcon.setAttribute('data-lucide', theme === 'light' ? 'moon' : 'sun');
-                    lucide.createIcons();
+                    this.createIconsSafe();
                 }
             }
         }
-        
+
         window.selectedPhotoBase64 = null;
         let typeChartInstance = null;
 
         document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
+            ThemeManager.createIconsSafe();
             ThemeManager.init();
             migrateLegacyUnloadingTypes();
 
@@ -570,7 +575,7 @@
 
             setupLocationOptions(locations);
             updateTotalAmount();
-            lucide.createIcons();
+            ThemeManager.createIconsSafe();
         }
         
         function populateDatalist() {
@@ -900,7 +905,7 @@
                 empty.style.display = 'block';
                 summary.textContent = 'Ще немає записів';
             }
-            lucide.createIcons();
+            ThemeManager.createIconsSafe();
         }
 
         function deleteItem(id) {
